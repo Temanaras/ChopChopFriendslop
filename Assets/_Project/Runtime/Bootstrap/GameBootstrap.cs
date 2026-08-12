@@ -19,13 +19,23 @@ namespace ChopChop.Bootstrap
         [SerializeField] private NetworkManager _networkManager;
         [SerializeField] private SteamRuntime _steam;
 
+        /// <summary>What an instance should do on the local Tugboat path.</summary>
+        public enum LocalRole : byte
+        {
+            /// <summary>Host if the port is free, otherwise join. Right for multi-instance testing.</summary>
+            Auto = 0,
+            Host = 1,
+            Join = 2,
+        }
+
         [Header("Local testing (Tugboat)")]
         [Tooltip("Bypass Steam entirely and host/join over plain UDP. Required for " +
                  "multi-instance testing, since Steam P2P cannot connect to itself.")]
         [SerializeField] private bool _localTestMode;
 
-        [Tooltip("In local test mode: host a listen server rather than joining one.")]
-        [SerializeField] private bool _localHost = true;
+        [Tooltip("Auto lets four instances launch in any order with identical settings: " +
+                 "the first one up takes the port and hosts, the rest join it.")]
+        [SerializeField] private LocalRole _localRole = LocalRole.Auto;
 
         [SerializeField] private string _localAddress = "127.0.0.1";
         [SerializeField] private ushort _localPort = 7770;
@@ -97,15 +107,22 @@ namespace ChopChop.Bootstrap
         {
             _state.Set(AppState.Connecting);
 
-            if (_localHost)
+            switch (_localRole)
             {
-                Debug.Log($"[Bootstrap] Local test: hosting on port {_localPort}.");
-                _session.StartLocalHost(_localPort);
-            }
-            else
-            {
-                Debug.Log($"[Bootstrap] Local test: joining {_localAddress}:{_localPort}.");
-                _session.JoinLocal(_localAddress, _localPort);
+                case LocalRole.Host:
+                    Debug.Log($"[Bootstrap] Local test: hosting on port {_localPort}.");
+                    _session.StartLocalHost(_localPort);
+                    break;
+
+                case LocalRole.Join:
+                    Debug.Log($"[Bootstrap] Local test: joining {_localAddress}:{_localPort}.");
+                    _session.JoinLocal(_localAddress, _localPort);
+                    break;
+
+                default:
+                    Debug.Log($"[Bootstrap] Local test: hosting on port {_localPort}, or joining it if taken.");
+                    _session.StartLocalAuto(_localAddress, _localPort);
+                    break;
             }
         }
 

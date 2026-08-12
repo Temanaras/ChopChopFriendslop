@@ -28,6 +28,15 @@ namespace ChopChop.Networking
 
         public TransportMode Mode { get; private set; } = TransportMode.Steam;
 
+        /// <summary>
+        /// Index within Multipass of the transport the client is set to use.
+        ///
+        /// Starting a server starts <em>every</em> transport Multipass holds, and each
+        /// reports its own connection state, so "a server started" on its own says
+        /// nothing about the one we actually care about.
+        /// </summary>
+        public int ActiveTransportIndex => _multipass.ClientTransport.Index;
+
         public void Use(TransportMode mode)
         {
             Mode = mode;
