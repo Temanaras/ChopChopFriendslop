@@ -243,7 +243,7 @@ TreeId = (chunkCoord, ushort localIndex)
 Generation produces, for a given chunk, a deterministic array of:
 
 ```
-struct TreeInstance          // generated, never saved
+struct GeneratedTree         // generated, never saved
 {
     Vector3 localPosition;   // relative to chunk origin
     float    yRotation;
@@ -252,6 +252,15 @@ struct TreeInstance          // generated, never saved
     byte     speciesIndex;   // visual variant within tier
 }
 ```
+
+*Named `GeneratedTree`, not `TreeInstance`: `UnityEngine.TreeInstance` already exists
+(a Terrain type), and the collision would need an alias in every file importing both
+namespaces.*
+
+**Density ceiling.** Placement uses a jittered 8×8 grid per chunk, one tree per cell
+at most, so a biome's `baseDensity` cannot exceed 64. The ~40 target above fits
+comfortably. Raising the grid resolution changes generation output and requires a
+`worldGenVersion` bump.
 
 **Tier is intrinsic.** Biome blending (see `DESIGN.md` §5.3) determines the
 *probability* that a given tree is tier N, but once generated the tree carries its
