@@ -1,17 +1,15 @@
 {
-    "name": "ChopChop.Networking",
-    "rootNamespace": "ChopChop.Networking",
+    "name": "FishyFacepunch",
+    "rootNamespace": "FishyFacepunch",
     "references": [
-        "ChopChop.Core",
-        "FishNet.Runtime",
-        "FishyFacepunch"
+        "FishNet.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
-    "autoReferenced": false,
+    "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
