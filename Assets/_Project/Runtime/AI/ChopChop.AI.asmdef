@@ -1,0 +1,21 @@
+{
+    "name": "ChopChop.AI",
+    "rootNamespace": "ChopChop.AI",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Biomes",
+        "ChopChop.Networking",
+        "ChopChop.World",
+        "ChopChop.Combat",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

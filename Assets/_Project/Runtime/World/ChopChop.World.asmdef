@@ -1,0 +1,20 @@
+{
+    "name": "ChopChop.World",
+    "rootNamespace": "ChopChop.World",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Items",
+        "ChopChop.Biomes",
+        "ChopChop.Networking",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

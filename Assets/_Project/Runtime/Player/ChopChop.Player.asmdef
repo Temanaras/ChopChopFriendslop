@@ -1,0 +1,22 @@
+{
+    "name": "ChopChop.Player",
+    "rootNamespace": "ChopChop.Player",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Items",
+        "ChopChop.Networking",
+        "ChopChop.World",
+        "ChopChop.Combat",
+        "FishNet.Runtime",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

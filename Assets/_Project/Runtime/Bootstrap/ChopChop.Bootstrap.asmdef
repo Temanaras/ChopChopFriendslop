@@ -1,0 +1,28 @@
+{
+    "name": "ChopChop.Bootstrap",
+    "rootNamespace": "ChopChop.Bootstrap",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Networking",
+        "ChopChop.Items",
+        "ChopChop.Biomes",
+        "ChopChop.World",
+        "ChopChop.Atmosphere",
+        "ChopChop.Cabin",
+        "ChopChop.Combat",
+        "ChopChop.Player",
+        "ChopChop.AI",
+        "ChopChop.Persistence",
+        "ChopChop.UI",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

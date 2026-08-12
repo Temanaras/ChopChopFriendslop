@@ -1,0 +1,37 @@
+{
+    "name": "ChopChop.Tests.Editor",
+    "rootNamespace": "ChopChop.Tests.Editor",
+    "references": [
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "ChopChop.Core",
+        "ChopChop.Networking",
+        "ChopChop.Items",
+        "ChopChop.Biomes",
+        "ChopChop.World",
+        "ChopChop.Atmosphere",
+        "ChopChop.Cabin",
+        "ChopChop.Combat",
+        "ChopChop.Player",
+        "ChopChop.AI",
+        "ChopChop.Persistence",
+        "ChopChop.UI",
+        "ChopChop.Editor",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

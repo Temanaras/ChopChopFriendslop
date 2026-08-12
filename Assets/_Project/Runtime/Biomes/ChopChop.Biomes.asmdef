@@ -1,0 +1,17 @@
+{
+    "name": "ChopChop.Biomes",
+    "rootNamespace": "ChopChop.Biomes",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Items"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

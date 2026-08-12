@@ -1,0 +1,23 @@
+{
+    "name": "ChopChop.UI",
+    "rootNamespace": "ChopChop.UI",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Items",
+        "ChopChop.Cabin",
+        "ChopChop.World",
+        "ChopChop.Player",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,19 @@
+{
+    "name": "ChopChop.Atmosphere",
+    "rootNamespace": "ChopChop.Atmosphere",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Biomes",
+        "ChopChop.World",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

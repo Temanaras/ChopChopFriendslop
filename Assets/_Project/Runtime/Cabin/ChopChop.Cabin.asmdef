@@ -1,0 +1,19 @@
+{
+    "name": "ChopChop.Cabin",
+    "rootNamespace": "ChopChop.Cabin",
+    "references": [
+        "ChopChop.Core",
+        "ChopChop.Items",
+        "ChopChop.Networking",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

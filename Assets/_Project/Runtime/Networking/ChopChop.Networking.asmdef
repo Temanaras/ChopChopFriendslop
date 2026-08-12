@@ -1,0 +1,17 @@
+{
+    "name": "ChopChop.Networking",
+    "rootNamespace": "ChopChop.Networking",
+    "references": [
+        "ChopChop.Core",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
