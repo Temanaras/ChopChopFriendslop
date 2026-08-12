@@ -4,7 +4,6 @@
     "references": [
         "ChopChop.Core",
         "ChopChop.Items",
-        "ChopChop.Networking",
         "FishNet.Runtime"
     ],
     "includePlatforms": [],

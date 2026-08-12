@@ -5,7 +5,6 @@
         "ChopChop.Core",
         "ChopChop.Items",
         "ChopChop.Biomes",
-        "ChopChop.Networking",
         "FishNet.Runtime"
     ],
     "includePlatforms": [],

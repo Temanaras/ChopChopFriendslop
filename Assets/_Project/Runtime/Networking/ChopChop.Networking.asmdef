@@ -3,6 +3,7 @@
     "rootNamespace": "ChopChop.Networking",
     "references": [
         "ChopChop.Core",
+        "ChopChop.Persistence",
         "FishNet.Runtime",
         "FishyFacepunch"
     ],

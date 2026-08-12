@@ -7,8 +7,7 @@
         "ChopChop.Biomes",
         "ChopChop.World",
         "ChopChop.Cabin",
-        "ChopChop.Networking",
-        "FishNet.Runtime"
+        "MemoryPack.Unity"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
