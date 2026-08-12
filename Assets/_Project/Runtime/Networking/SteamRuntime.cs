@@ -41,6 +41,19 @@ namespace ChopChop.Networking
         private void Awake()
         {
             DontDestroyOnLoad(gameObject);
+
+            /* A dedicated server has no Steam client to talk to, and on a rented box
+             * there may be no Steam at all. Checked here rather than being switched off
+             * by the bootstrap, because both components sit on the same object and Unity
+             * gives no ordering guarantee between their Awake calls — by the time
+             * anything could disable this, Init would already have run. */
+            if (LaunchArguments.HasFlag(Environment.GetCommandLineArgs(), LaunchArguments.ServerFlag))
+            {
+                Debug.Log("[Steam] Headless server; skipping Steam initialization.");
+                enabled = false;
+                return;
+            }
+
             TryInitialize();
         }
 

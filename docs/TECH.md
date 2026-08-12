@@ -24,7 +24,16 @@
 | Serialization | MemoryPack or MessagePack-CSharp | See §6.2 |
 
 **Install FishNet via Package Manager:**
-`https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet`
+`https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#<commit>`
+
+**Pin it.** The URL must carry a commit or tag. Unpinned, a package re-resolve
+silently takes whatever `main` is that day — for a library whose IL post-processor
+rewrites your compiled code. MemoryPack and NuGetForUnity are pinned too; keep it
+that way.
+
+**FishyFacepunch and Facepunch.Steamworks are vendored** into `Assets/Plugins`
+rather than installed as packages. They have no version and no update path, and
+edits to them are edits to the project. Treat them as source you own.
 
 FishNet uses an IL post-processor that injects networking logic at compile time
 rather than using runtime reflection. Consequence: RPC and SyncType changes
@@ -67,10 +76,14 @@ element must be an item instance that can be placed in a container. This is what
 makes the shared cabin chest function as the catch-up mechanism. If a feature
 request implies non-transferable progress, stop and raise it.
 
-### 2.4 The save format is the migration payload
+### 2.4 The save format is the transfer payload
 
-Do not build saving and host migration as separate systems. A world snapshot must
-be complete enough that a fresh host can load it and continue. See §6 and §8.
+A world snapshot must be complete enough to reconstruct a world from nothing — the
+same bytes serve the disk save and the late-join transfer, and there is no second
+"network format" that can drift from the one on disk. See §6 and §8.
+
+*(Previously "the migration payload". Migration is gone with the server pivot, but
+the requirement survives intact: late join needs exactly the same completeness.)*
 
 ### 2.5 Late join is a day-one requirement
 
@@ -101,7 +114,7 @@ Assets/
   _Project/
     Runtime/
       Core/            Bootstrap, service locator, app state machine
-      Networking/      Lobby, migration, connection flow, broadcasts
+      Networking/      Lobby, roles, connection flow, broadcasts, snapshot transfer
       World/           Chunks, worldgen, tree data, regrowth, streaming
       Biomes/          Biome ScriptableObject definitions + authored assets
       Items/           Item definitions, instances, inventory, paperdoll
@@ -134,8 +147,37 @@ compile error. Enforce these rules:
 
 ### 4.1 Model
 
-Host-authoritative listen server. The host is simultaneously server and a local
-client. 3–4 players. No dedicated servers, ever.
+**A session belongs to a server.** The server is authoritative and owns the world
+save; clients hold no copy of it.
+
+The server runs in one of two ways, from the same code and the same binary:
+
+| Role | What it is |
+| --- | --- |
+| `HostedServer` | Server and client in one process. Normal play — press Play and it works. |
+| `Server` | Headless and standalone, on a spare machine or a rented box. |
+| `Client` | Connects to an address. Never assumes a server is present. |
+
+Selected at runtime with `-server`, or `-connect <host[:port]>`, falling back to
+the inspector default. **Not** by build target: Unity's dedicated-server subtarget
+defines `UNITY_SERVER`, and FishyFacepunch compiles its entire Steam path out under
+that define, which would rule out Steam invites later. One binary, a flag.
+
+`HostedServer` is a convenience, not a third topology — Minecraft's singleplayer
+server is in-process too. **Gameplay code must never branch on being the host.**
+Server logic checks `IsServerInitialized`, client logic checks
+`IsClientInitialized`, and neither asks whether the other lives in the same
+process. The moment something asks "am I the host?", the headless build stops
+matching what everyone playtests.
+
+3–4 players is a target, not a cap; solo and two-player are normal.
+
+> **This replaces the original "host-authoritative listen server, no dedicated
+> servers, ever."** That choice carried host migration and distributed saves as
+> downstream commitments — the two most expensive items in this document — to solve
+> a problem a server does not have. A host leaving now ends that session; if you
+> want the world to outlive any particular player, run a dedicated server. See
+> `DESIGN.md` §3.2 and §4.
 
 ### 4.2 Tick rate
 
@@ -303,19 +345,25 @@ authored edge blends outward rather than ending in a visible circle.
 
 ## 6. Persistence
 
-### 6.1 Distributed save model
+### 6.1 The server owns the save
 
-**Every client holds a full copy of the world save.** No single machine owns the
-world. This prevents world loss and provides the migration payload.
+**The server is the single writer.** Clients hold no copy of the world. There is
+one file, on the machine running the server, and `WorldSaveService` is the only
+thing that writes it.
 
-**Conflict resolution: monotonic version counter.** On join, the highest
-`saveVersion` wins and the joiner overwrites its local world copy wholesale. No
-merging.
+`saveVersion` survives as a plain monotonic counter, useful for reading logs and
+telling two snapshots apart. It is no longer a conflict-resolution mechanism,
+because there is no longer a conflict to resolve.
 
-- A player's **world copy** is replaced on join
-- A player's **paperdoll** travels with them and is never overwritten by the world
+A player's **paperdoll** is still stored separately from the world (§6.3). The
+reason changed: it is no longer about surviving a world copy being replaced, but
+about a player being able to carry their gear between servers.
 
-The host increments `saveVersion` on every autosave.
+> **This replaces the distributed save model** — every client holding a full copy,
+> with a highest-version-wins rule on join. That existed to stop the world dying
+> with the host. A server that outlives any player solves the same problem without
+> a merge rule, a version race, or four machines disagreeing about what happened.
+> See `DESIGN.md` §3.2.
 
 ### 6.2 Serialization
 
@@ -390,7 +438,10 @@ and validate with a hash. Send on the reliable channel. Rate-limit segments acro
 several ticks so the transfer doesn't stall gameplay — this is background traffic,
 not urgent.
 
-The same mechanism serves late join (§8.4) and migration (§8.2). Build it once.
+This carries late join (§8.4). It is server → client only: the server is the sole
+holder of the world, so nothing needs to travel the other way. Note the segment
+size is safe in that direction only — a client-to-server transfer would have to fit
+under `TransportManager.MaximumClientPacketSize`.
 
 ---
 
@@ -441,65 +492,83 @@ early — it cannot be tuned on paper.
 
 ---
 
-## 8. Steam Lobby, Late Join, and Host Migration
+## 8. Connection, Late Join, and Server Lifetime
 
 ### 8.1 Connection flow
 
+**By address (current).** The server listens on Tugboat. Clients connect to
+`host:port`, from the connect menu or with `-connect <host[:port]>`. A
+`HostedServer` starts its server and then connects its own client over the
+loopback, exactly as a remote client would.
+
+**By Steam invite (not yet).** The lobby layer exists (`LobbyService`, §8.1 flow
+below) but cannot serve a headless server, because **FishyFacepunch only ever
+calls `SteamClient` and never the game-server API**. Facepunch.Steamworks ships
+`SteamServer` / `ISteamGameServer` / `SteamGameServerNetworkingSockets`; the
+transport simply does not use them. Wiring that up is a scoped piece of work, not
+a line change. Until then the lobby path only works host-to-host:
+
 1. `SteamClient.Init(appId)` at boot in a `DontDestroyOnLoad` singleton
 2. Host calls `SteamMatchmaking.CreateLobbyAsync(4)`; on success writes its own
-   SteamID into lobby data under a known key, then starts FishNet server + local
-   client
+   SteamID into lobby data under a known key
 3. Friend joins via overlay → Steam fires `OnGameLobbyJoinRequested` → join lobby
    → `OnLobbyEntered` reads the host SteamID from lobby data → sets it as the
    transport's client address → `ClientManager.StartConnection()`
 4. **Cold start:** Steam launches the executable with `+connect_lobby <id>` in the
    command line. Parse `Environment.GetCommandLineArgs()` on boot or invites
-   silently fail when the game wasn't already running.
+   silently fail when the game wasn't already running. A cold-start invite
+   outranks the configured role — the player was asked to join someone.
 
 **Known constraint:** FishyFacepunch cannot connect to itself locally, since it
 uses Steam P2P. Multipass with Tugboat is required for local multi-instance
 testing — this is why Multipass is in the stack rather than optional.
 
-### 8.2 Host migration
+**Multipass starts every transport it holds, server-side.** Anything reacting to
+"a server started" must filter on transport index, or FishyFacepunch coming up
+will mask Tugboat failing to bind. This is also why FishNet's `DefaultScene`
+component is not used: its guard is `IsOnlyOneServerStarted()`, which is written
+for a single transport.
 
-FishNet has no built-in migration; neither do Mirror or NGO. When the host drops,
-every `NetworkObject` on every client is destroyed and live state is lost.
-Migration is built on top of the save system.
+### 8.1a Scenes are addressed by name
 
-**Election is free.** Steam lobbies auto-migrate lobby ownership when the owner
-leaves, and the member list is ordered by join time. Listen for the ownership
-change; the new owner becomes host. This gives "second player to join takes over"
-without writing an election algorithm.
+`SceneLoadData` takes a scene **name**, never an asset path. A path resolves in the
+editor via the AssetDatabase and fails silently in a build — the server logs
+"global scenes ... could not be found", keeps running, and clients spawn into a
+world with no ground and fall forever. Anything that configures a scene must
+normalise to the name before use.
 
-**Strategy: autosave rollback.** The host broadcasts a full snapshot every 45s.
-On host loss:
+### 8.2 Server lifetime — migration removed
 
-1. All clients detect disconnect
-2. Steam promotes the next lobby owner
-3. New host loads its most recent received snapshot, starts a server
-4. New host writes its SteamID to lobby data
-5. Remaining clients see the lobby data change and reconnect
-6. Players lose up to 45s of progress
+**There is no host migration.** When the server stops, the session ends. Clients
+disconnect and the world is exactly as of the server's last write.
 
-Rejected: continuous shadow-save deltas. Near-zero loss, roughly double the
-bandwidth, and a large ongoing source of sync bugs. Not worth it for four players.
+This is the whole point of the pivot. Migration was previously the answer to "the
+host quit and took the world with them", and it was the most expensive thing in
+this document — FishNet has no built-in migration, neither do Mirror or NGO, and
+the estimate here was two weeks *if* the save layer was already correct. Making
+the server able to outlive any particular player answers the same question with a
+process boundary instead.
 
-**Discarded on migration:** enemy positions, projectiles, partially chopped trees,
-active hazards. The world "shifts" slightly — sell it fictionally.
+**If you want the world to persist beyond one person's session, run a dedicated
+server.** That is the supported answer, and it is Minecraft's answer too.
 
-**Implementation sequencing:** build the snapshot system first, ship without
-migration, add migration once the game is proven fun. If the save layer is
-correct this is roughly two weeks. If it isn't, it is impossible at any budget.
+*(Removed: the autosave-rollback strategy, Steam lobby-ownership election, the
+45s snapshot broadcast to every client, and the list of state discarded on
+migration. None of it has a job any more.)*
 
-### 8.3 Reconnect UX
+### 8.3 Connect and disconnect UX
 
-Migration will take several seconds. Show a deliberate, in-fiction transition
-rather than a spinner — a fade, wind, a screen of trees. Players will read a
+Joining takes as long as the snapshot transfer takes. Show a deliberate, in-fiction
+transition rather than a spinner — a fade, wind, a screen of trees. Players read a
 freeze as a crash.
+
+Losing the server is now an ordinary disconnect rather than a recoverable event.
+Say so plainly and offer to reconnect; do not imply the world is gone, because it
+is not — it is on the server, as of its last write.
 
 ### 8.4 Late join
 
-A joining client must receive, before gaining control:
+Server → client, always. A joining client must receive, before gaining control:
 
 1. World seed and `worldGenVersion`
 2. `worldTick`
@@ -756,8 +825,13 @@ a player crosses a chunk boundary is the most likely performance complaint.
   every schema change.
 - **Late-join test:** manual, but run it every session. Chop a road, join a fourth
   player, confirm the road is there.
-- **Migration test:** kill the host process (don't quit gracefully) and confirm
-  recovery.
+- **Headless test:** build, run `ChopChop.exe -server -batchmode -nographics`, and
+  connect the editor to `127.0.0.1`. **Run this after any change to boot, scene
+  loading, or role handling.** Everything else can pass with a hosted server in
+  disguise; only this catches editor-only assumptions, and it has already caught
+  two (scene-by-path, and `DefaultScene` never subscribing in a player).
+- **Disconnect test:** kill the server process rather than quitting it, and confirm
+  clients drop cleanly instead of hanging.
 
 ---
 
@@ -766,11 +840,13 @@ a player crosses a chunk boundary is the most likely performance complaint.
 The purpose of the vertical slice is to answer "is chopping trees with friends
 fun?" before any content scale exists.
 
-1. **Bootstrap + Steam lobby.** 4 players in a grey-box clearing. Multipass with
-   both transports.
-2. **Networked movement.** Predicted, verified at 100ms.
+1. **Bootstrap + connection.** Players in a grey-box clearing. Multipass with both
+   transports. ✅
+2. **Networked movement.** Predicted, verified at 100ms. ✅
 3. **Save schema + serialization + chunked transfer.** Foundation for everything.
-   Build this before content.
+   Build this before content. ✅
+3a. **Server pivot.** Roles, server-owned save, headless build, connect by address.
+   Done before step 4 because step 5 bakes the topology in permanently. ✅
 4. **Chunk system + deterministic generation.** One biome, one tree tier.
    Determinism test in CI.
 5. **One choppable tree** with diffs replicating, plus the late-join path.
@@ -780,8 +856,10 @@ fun?" before any content scale exists.
 9. **One enemy** that chases and can be killed.
 10. **Paperdoll + cabin storage.** Minimal, but proves the transferable-item rule.
 
-Deliberately **not** in Milestone 1: host migration, mounts, multiple rings,
-crafting tree, the Xarol.
+Deliberately **not** in Milestone 1: Steam game-server transport (invites to a
+dedicated server), mounts, multiple rings, crafting tree, the Xarol.
+
+Host migration is not deferred — it is gone. See §8.2.
 
 If the loop isn't fun in grey-box, more rings will not fix it.
 
@@ -791,6 +869,13 @@ If the loop isn't fun in grey-box, more rings will not fix it.
 
 - Read §2 (Invariants) before making architectural changes. If a task appears to
   require violating one, stop and raise it rather than working around it.
+- **Never branch gameplay on being the host.** Check `IsServerInitialized` or
+  `IsClientInitialized`; never ask whether the two happen to share a process. This
+  is the one rule that keeps the headless build honest (§4.1).
+- **The editor is not the target.** Scene references resolve by name in a build,
+  not by asset path; component initialisation order differs; `Application`
+  conveniences may not exist. After touching boot, scene loading, or roles, run the
+  headless test in §15.
 - Gameplay simulation goes in `TimeManager.OnTick`, not `Update`.
 - Any new networked state needs a late-join serialization path in the same PR.
 - Any new progression element must be an `ItemDefinition`. If it can't be put in a

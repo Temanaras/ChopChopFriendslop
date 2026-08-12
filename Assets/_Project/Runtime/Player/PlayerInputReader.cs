@@ -18,12 +18,35 @@ namespace ChopChop.Player
         private InputAction _move;
         private InputAction _jump;
         private bool _jumpLatched;
+        private bool _resolved;
 
         /// <summary>Movement on the XZ plane, unrotated. Camera-relative movement comes later.</summary>
         public Vector2 MoveInput => _move?.ReadValue<Vector2>() ?? Vector2.zero;
 
-        private void Awake()
+        /* Actions are resolved on enable rather than in Awake, and this component is
+         * only enabled for the owning client. Unity runs Awake even on disabled
+         * components, so resolving there would have every player on a headless server
+         * reach into the Input System and switch action maps on — for players who are
+         * not on that machine and inputs nobody will ever read. */
+        private void OnEnable()
         {
+            if (!TryResolveActions())
+            {
+                enabled = false;
+                return;
+            }
+
+            _move.Enable();
+            _jump.Enable();
+        }
+
+        private bool TryResolveActions()
+        {
+            if (_resolved)
+                return _move != null && _jump != null;
+
+            _resolved = true;
+
             InputActionAsset actions = InputSystem.actions;
 
             if (actions == null)
@@ -31,25 +54,17 @@ namespace ChopChop.Player
                 Debug.LogError(
                     "[Input] No project-wide input actions asset is assigned " +
                     "(Project Settings > Input System Package). Player input is disabled.");
-                enabled = false;
-                return;
+                return false;
             }
 
             _move = actions.FindAction("Player/Move");
             _jump = actions.FindAction("Player/Jump");
 
-            if (_move == null || _jump == null)
-            {
-                Debug.LogError(
-                    "[Input] The project-wide actions asset has no Player/Move or Player/Jump action.");
-                enabled = false;
-            }
-        }
+            if (_move != null && _jump != null)
+                return true;
 
-        private void OnEnable()
-        {
-            _move?.Enable();
-            _jump?.Enable();
+            Debug.LogError("[Input] The project-wide actions asset has no Player/Move or Player/Jump action.");
+            return false;
         }
 
         private void OnDisable()

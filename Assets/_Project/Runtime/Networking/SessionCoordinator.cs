@@ -19,13 +19,22 @@ namespace ChopChop.Networking
         private readonly TransportRouter _router;
         private readonly LobbyService _lobby;
 
-        /// <summary>True between asking for a listen server and hearing back about it.</summary>
+        /// <summary>True between asking for a server and hearing back about it.</summary>
         private bool _startingHost;
 
-        /// <summary>Where to fall back to if the listen server can't take the port.</summary>
+        /// <summary>Whether a client in this same process should connect once the server is up.</summary>
+        private bool _attachLocalClient;
+
+        /// <summary>Where to fall back to if the server can't take the port.</summary>
         private string _fallbackAddress;
         private ushort _fallbackPort;
         private bool _fallbackToJoin;
+
+        /// <summary>
+        /// The server is listening. This is where server-owned systems come up — the
+        /// world save above all, since the server owns it and clients hold no copy.
+        /// </summary>
+        public event Action ServerStarted;
 
         public SessionCoordinator(NetworkManager networkManager, TransportRouter router, LobbyService lobby)
         {
@@ -52,7 +61,7 @@ namespace ChopChop.Networking
         private void HandleLobbyHosted(Lobby lobby)
         {
             _router.Use(TransportMode.Steam);
-            StartListenServer();
+            StartServerInternal(withLocalClient: true);
         }
 
         private void HandleHostResolved(SteamId hostId)
@@ -62,20 +71,25 @@ namespace ChopChop.Networking
             _networkManager.ClientManager.StartConnection();
         }
 
-        // ---------------- Local testing path ----------------
+        // ---------------- Address path ----------------
 
         /// <summary>
-        /// Start a listen server on Tugboat. Used for multi-instance testing, where
-        /// Steam P2P cannot connect to itself.
+        /// Bring up the authoritative server.
         /// </summary>
-        public void StartLocalHost(ushort port)
+        /// <param name="withLocalClient">
+        /// True for <see cref="AppRole.HostedServer"/>, where a client shares the
+        /// process. False for a headless <see cref="AppRole.Server"/>, which has no
+        /// local player at all. Nothing downstream of here is allowed to care which
+        /// one it was.
+        /// </param>
+        public void StartServer(ushort port, bool withLocalClient)
         {
             _router.Use(TransportMode.Local);
             _router.SetPort(port);
-            StartListenServer();
+            StartServerInternal(withLocalClient);
         }
 
-        public void JoinLocal(string address, ushort port)
+        public void ConnectClient(string address, ushort port)
         {
             _router.Use(TransportMode.Local);
             _router.SetPort(port);
@@ -84,27 +98,28 @@ namespace ChopChop.Networking
         }
 
         /// <summary>
-        /// Take the port if it's free, otherwise join whoever already has it.
+        /// Take the port if it's free, otherwise connect to whoever already has it.
         ///
-        /// Four editor instances is the target test configuration (TECH 15), and they
-        /// share one copy of the scene, so no serialized flag can tell them apart. This
-        /// lets every instance launch with identical settings in any order: the first
-        /// one up hosts and the rest find it.
+        /// Several editor instances is the target test configuration (TECH 15), and
+        /// they share one copy of the scene, so no serialized flag can tell them apart.
+        /// This lets every instance launch with identical settings in any order: the
+        /// first one up serves and the rest connect to it.
         /// </summary>
-        public void StartLocalAuto(string address, ushort port)
+        public void StartServerOrConnect(string address, ushort port)
         {
             _fallbackAddress = address;
             _fallbackPort = port;
             _fallbackToJoin = true;
 
-            StartLocalHost(port);
+            StartServer(port, withLocalClient: true);
         }
 
         // ---------------- Shared ----------------
 
-        private void StartListenServer()
+        private void StartServerInternal(bool withLocalClient)
         {
             _startingHost = true;
+            _attachLocalClient = withLocalClient;
             _networkManager.ServerManager.StartConnection();
         }
 
@@ -130,7 +145,17 @@ namespace ChopChop.Networking
                 _startingHost = false;
                 _fallbackToJoin = false;
 
-                // The host is also a player, so it connects a local client to itself.
+                ServerStarted?.Invoke();
+
+                if (!_attachLocalClient)
+                {
+                    // Headless. Nobody is playing on this machine.
+                    Debug.Log("[Session] Server is up and listening.");
+                    return;
+                }
+
+                // Sharing the process with a client, so connect it over the loopback
+                // like any other client would.
                 _networkManager.ClientManager.StartConnection();
             }
             else if (args.ConnectionState == LocalConnectionState.Stopped)
@@ -140,13 +165,13 @@ namespace ChopChop.Networking
                 if (_fallbackToJoin)
                 {
                     _fallbackToJoin = false;
-                    Debug.Log($"[Session] Port {_fallbackPort} is already taken; joining that instance instead.");
+                    Debug.Log($"[Session] Port {_fallbackPort} is already taken; connecting to that instance instead.");
 
                     // Multipass started the other transports too. Drop the whole server
-                    // before joining, or this instance would be a client and a half-open
-                    // host at the same time.
+                    // before connecting, or this instance would be a client and a
+                    // half-open server at the same time.
                     _networkManager.ServerManager.StopConnection(sendDisconnectMessage: false);
-                    JoinLocal(_fallbackAddress, _fallbackPort);
+                    ConnectClient(_fallbackAddress, _fallbackPort);
                 }
                 else
                 {

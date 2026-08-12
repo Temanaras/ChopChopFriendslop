@@ -18,7 +18,8 @@ darkness, and intent, not gore. Never comedic, though the horror trappings may b
 dialed back.
 
 **Engine:** Unity
-**Networking:** FishNet, host-authoritative listen server
+**Networking:** FishNet, server-authoritative. The server runs in-process for
+normal play or standalone and headless on a box (§4)
 **Transport:** FishyFacepunch (Facepunch.Steamworks) over Steam P2P, with
 Multipass + Tugboat retained for local testing
 **Distribution:** Steam
@@ -45,18 +46,23 @@ make the world safer, but the forest regrows while you're away.
 The world persists between sessions. Drop-in / drop-out — players join and leave
 freely.
 
-### 3.2 Distributed saves
+### 3.2 The server owns the save — **revised**
 
-**Every player holds a full copy of the save.** No single machine owns the world,
-so the world cannot be lost when one friend stops playing. This also supplies the
-payload needed for host migration.
+> **This previously specified distributed saves**: every player holding a full
+> copy, with a highest-version-wins rule on join. It was marked DECIDED and has
+> been reversed alongside §4.
 
-**Conflict resolution:** monotonic version counter. On join, the highest-version
-save wins and joiners overwrite their local world copy wholesale. No merging.
+**One world file, on the server.** Nobody else writes it, so there is nothing to
+merge and no version race.
+
+The world is not lost when a friend stops playing — it lives on whatever machine
+is running the server, and a group that wants it available regardless of who is
+online runs a dedicated one.
 
 **Split of ownership:**
-- A player's **world copy** is replaced on join
-- A player's **paperdoll** travels with them
+- The **world** belongs to the server
+- A player's **paperdoll** still travels with them, so gear can move between
+  servers
 
 ### 3.3 Save schema
 
@@ -95,41 +101,42 @@ physically visible and separates the two progression axes cleanly:
 
 ---
 
-## 4. Host Migration — **DECIDED (deferred implementation)**
+## 4. Servers — **DECIDED (revised)**
 
-No engine supports this natively; FishNet, Mirror, and NGO all destroy every
-`NetworkObject` when the host drops. Migration must be built on top of the save
-system.
+> **This section previously specified host migration**, built on top of the save
+> system, with Steam lobby-ownership election and autosave rollback. It was marked
+> DECIDED. It has been reversed — see "Why this changed" below.
 
-**Key insight: the save format *is* the migration payload.** Do not build these
-as two features.
+### 4.1 A session belongs to a server
 
-### 4.1 Election
+The server is authoritative and owns the world save. It runs either in the
+player's own process (press Play, it just works — like Minecraft singleplayer) or
+standalone and headless on a spare machine.
 
-Steam lobbies auto-migrate lobby ownership when the owner leaves, and the member
-list is ordered by join time. Listening for the ownership change gives
-"second player to join becomes host" for free.
+### 4.2 There is no host migration
 
-### 4.2 Strategy: autosave rollback
+When the server stops, the session ends. Players disconnect; the world is intact
+on the server as of its last write, and is there when it comes back up.
 
-Host pushes a full snapshot to all clients every 30–60s. On migration, the new
-host loads the last snapshot and everyone reconnects. Players lose up to a minute
-of work.
+**If you want the world to be available when no particular person is around, run a
+dedicated server.** That is the supported answer.
 
-Rejected alternative: continuous shadow-save deltas. Near-zero loss, but doubles
-bandwidth and is a large source of sync bugs. Not worth it for a 4-player game.
+### 4.3 Why this changed
 
-### 4.3 Transient state is discarded
+Migration existed to answer one question: *the host quit, is the world gone?* It
+was the most expensive item in either document — no engine supports it natively,
+and the estimate was two weeks of work that would be impossible if the save layer
+were even slightly wrong. It also forced distributed saves (§3.2) to supply its
+payload, which brought a version-conflict rule along with it.
 
-Enemy positions, projectiles, partially chopped trees, and active hazards are not
-migrated. The world "shifts" slightly on migration — which can be sold
-fictionally.
+A server that can outlive any particular player answers the same question with a
+process boundary. Two premises had also shifted: 3–4 players is a target rather
+than a cap, and connecting by address is acceptable.
 
-### 4.4 Sequencing
-
-Build the snapshot/save system first. Ship without migration. Add migration once
-the game is proven fun. If the save layer is correct, migration is roughly two
-weeks of work; if it isn't, migration is impossible at any budget.
+The cost is real and worth stating: **Steam invites do not currently reach a
+dedicated server**, because the transport we use only speaks to the Steam client,
+not the Steam game-server API. Address-based connection works today; invites are
+scoped work for later.
 
 ---
 
@@ -391,8 +398,9 @@ systems that these can't be answered boldly when the time comes.
 
 | Risk | Mitigation |
 | --- | --- |
-| Host migration is genuinely hard | Save format doubles as migration payload; ship without it first |
-| Save divergence between separate sessions | Version counter, highest wins, no merge |
+| Nobody wants to be the one who hosts | Dedicated server is a supported, documented mode (§4) |
+| Steam invites do not reach a dedicated server | Address-based connection ships first; game-server transport is scoped work |
+| Save divergence between separate sessions | Server is the single writer; there is nothing to diverge |
 | Progression divergence between friends | Everything transferable + group storage |
 | Clear-cutting destroys the horror | Regrowth + per-ring spawn floors |
 | Regrowth mistuned in either direction | Ship the system early with placeholder numbers |

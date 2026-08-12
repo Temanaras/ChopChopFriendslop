@@ -25,7 +25,7 @@
       "hash": "0f2fe0827907940768293b7bb81b9605a7d8cba8"
     },
     "com.firstgeargames.fishnet": {
-      "version": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet",
+      "version": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#2742f2379a8fbcfe6c38f788f3354bbdd806284f",
       "depth": 0,
       "source": "git",
       "dependencies": {

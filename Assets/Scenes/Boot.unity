@@ -262,7 +262,6 @@ GameObject:
   - component: {fileID: 1389942807}
   - component: {fileID: 1389942806}
   - component: {fileID: 1389942805}
-  - component: {fileID: 1389942812}
   - component: {fileID: 1389942811}
   m_Layer: 0
   m_Name: NetworkManager
@@ -420,23 +419,6 @@ MonoBehaviour:
   - {fileID: 577409942}
   - {fileID: 129566546}
   - {fileID: 1326364133}
---- !u!114 &1389942812
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1389942803}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 57ce8bbb58966cb45a7140f32da5327a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Scenes.DefaultScene
-  _enableGlobalScenes: 1
-  _startInOffline: 0
-  _offlineScene: Assets/Scenes/Offline.unity
-  _onlineScene: Assets/Scenes/Clearing.unity
-  _replaceScenes: 0
 --- !u!1 &1913257956
 GameObject:
   m_ObjectHideFlags: 0
@@ -540,6 +522,7 @@ GameObject:
   - component: {fileID: 1939508643}
   - component: {fileID: 1939508642}
   - component: {fileID: 1939508641}
+  - component: {fileID: 1939508644}
   m_Layer: 0
   m_Name: Bootstrap
   m_TagString: Untagged
@@ -561,10 +544,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: ChopChop.Bootstrap::ChopChop.Bootstrap.GameBootstrap
   _networkManager: {fileID: 1389942804}
   _steam: {fileID: 1939508642}
-  _localTestMode: 1
-  _localRole: 0
-  _localAddress: 127.0.0.1
-  _localPort: 7770
+  _defaultRole: 2
+  _connectIfPortTaken: 1
+  _address: 127.0.0.1
+  _port: 7770
+  _newWorldSeed: 1337
+  _worldScene: Assets/Scenes/Clearing.unity
 --- !u!114 &1939508642
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -593,6 +578,22 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1939508644
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1939508640}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7faf1e9e8a6dc574895bc52395304012, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.UI::ChopChop.UI.ConnectMenu
+  _networkManager: {fileID: 1389942804}
+  _address: 127.0.0.1
+  _port: 7770
+  _showWhileServing: 0
 --- !u!1 &1982001871
 GameObject:
   m_ObjectHideFlags: 0

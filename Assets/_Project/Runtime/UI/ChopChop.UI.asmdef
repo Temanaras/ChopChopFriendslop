@@ -7,6 +7,8 @@
         "ChopChop.Cabin",
         "ChopChop.World",
         "ChopChop.Player",
+        "ChopChop.Networking",
+        "FishNet.Runtime",
         "Unity.InputSystem",
         "Unity.TextMeshPro",
         "UnityEngine.UI"
