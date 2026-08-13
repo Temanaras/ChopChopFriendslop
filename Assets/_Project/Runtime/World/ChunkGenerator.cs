@@ -215,9 +215,19 @@ namespace ChopChop.World
         /// the chunk's own maximum. Normalising per chunk would make a sparse chunk look
         /// as dark as a dense one, and the darkness system would stop meaning anything.
         /// </summary>
+        /// <remarks>
+        /// The reference is measured, not guessed. At the ~40 trees per chunk TECH 5.1
+        /// targets, a 4m cell rarely holds more than one trunk, so a cell reads about
+        /// 1.0 from its own tree plus 0.35 per neighbour. A reference of 4 capped the
+        /// whole world at ~0.43 density and left over half the darkness range unusable.
+        ///
+        /// This is derived data, not placement: it runs after trees are chosen and is
+        /// never saved, so changing it does not move any tree and does not invalidate
+        /// diffs. No <c>WorldGenVersion</c> bump.
+        /// </remarks>
         private static void NormalizeDensity(float[] density)
         {
-            const float reference = 4f;
+            const float reference = 2f;
 
             for (int i = 0; i < density.Length; i++)
                 density[i] = Mathf.Clamp01(density[i] / reference);

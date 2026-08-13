@@ -268,6 +268,55 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 556976372}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &698542942
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 698542944}
+  - component: {fileID: 698542943}
+  m_Layer: 0
+  m_Name: Darkness Volume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &698542943
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 698542942}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 10
+  blendDistance: 0
+  weight: 0
+  sharedProfile: {fileID: 11400000, guid: cb3ee96a97be757498f685343605a539, type: 2}
+--- !u!4 &698542944
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 698542942}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &790533810
 GameObject:
   m_ObjectHideFlags: 0
@@ -390,6 +439,7 @@ GameObject:
   m_Component:
   - component: {fileID: 961268205}
   - component: {fileID: 961268204}
+  - component: {fileID: 961268206}
   m_Layer: 0
   m_Name: World
   m_TagString: Untagged
@@ -412,6 +462,7 @@ MonoBehaviour:
   _biomes: {fileID: 11400000, guid: 0c9bb25e5e4f62f49a07e404757cdf51, type: 2}
   _worldSeed: 1337
   _radiusInChunks: 3
+  _colliderRadius: 48
   _restreamDistance: 16
   _clearingRadius: 60
   _clearingRampWidth: 25
@@ -430,6 +481,32 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &961268206
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 961268203}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 874672115e5b65a4aa7607cd4f37e329, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.Atmosphere::ChopChop.Atmosphere.DarknessDriver
+  _streamer: {fileID: 961268204}
+  _biomes: {fileID: 11400000, guid: 0c9bb25e5e4f62f49a07e404757cdf51, type: 2}
+  _smoothingSeconds: 0.5
+  _driveFog: 1
+  _openFogDensity: 0.004
+  _denseFogDensity: 0.055
+  _openFogColor: {r: 0.68, g: 0.74, b: 0.8, a: 1}
+  _denseFogColor: {r: 0.12, g: 0.14, b: 0.15, a: 1}
+  _sun: {fileID: 1067862834}
+  _openSunIntensity: 1.1
+  _denseSunIntensity: 0.12
+  _openAmbient: {r: 0.55, g: 0.58, b: 0.62, a: 1}
+  _denseAmbient: {r: 0.06, g: 0.07, b: 0.08, a: 1}
+  _volume: {fileID: 698542943}
 --- !u!1 &1067862833
 GameObject:
   m_ObjectHideFlags: 0
@@ -1096,3 +1173,4 @@ SceneRoots:
   - {fileID: 1067862835}
   - {fileID: 454506186}
   - {fileID: 961268205}
+  - {fileID: 698542944}

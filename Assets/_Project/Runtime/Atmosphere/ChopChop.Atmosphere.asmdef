@@ -5,6 +5,7 @@
         "ChopChop.Core",
         "ChopChop.Biomes",
         "ChopChop.World",
+        "Unity.RenderPipelines.Core.Runtime",
         "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [],
