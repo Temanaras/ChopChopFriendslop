@@ -43,6 +43,9 @@ namespace ChopChop.Player
 
             if (streamer != null)
                 streamer.SetCentre(transform);
+
+            if (Core.ServiceLocator.TryGet(out TreeClient trees) && TryGetComponent(out PlayerChopper chopper))
+                chopper.Bind(trees);
         }
     }
 }

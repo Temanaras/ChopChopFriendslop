@@ -5,20 +5,18 @@ using UnityEngine;
 namespace ChopChop.World
 {
     /// <summary>
-    /// Keeps chunks resident around the local player and draws the ones that are.
+    /// Keeps chunks, colliders and visuals resident around whoever needs them.
     ///
-    /// Client-side for now: this is the visual band (TECH 5.4), which is presentation
-    /// and exists only where there is a camera. The server will need its own residency
-    /// pass around *every* player once chopping needs colliders to hit — that is a
-    /// different radius for a different reason and deliberately not this component.
+    /// The asymmetry in TECH 5.4 is the whole design here: **a client keeps colliders
+    /// only around itself, and the server keeps them around every player.** The server
+    /// has to, because it validates what everyone chops, and a raycast cannot hit a tree
+    /// that has no collider. Rendering is the opposite — only a client with a camera does
+    /// any of it.
     /// </summary>
     public sealed class WorldStreamer : MonoBehaviour
     {
         [Header("World")]
         [SerializeField] private BiomeSet _biomes;
-
-        [Tooltip("Overridden by the server's seed once the world is handed over. The " +
-                 "inspector value is what a standalone editor scene uses.")]
         [SerializeField] private int _worldSeed = 1337;
 
         [Header("Streaming")]
@@ -26,8 +24,11 @@ namespace ChopChop.World
                  "visual band in TECH 5.4.")]
         [Range(1, 8)][SerializeField] private int _radiusInChunks = 3;
 
-        [Tooltip("Metres the centre must move before residency is recalculated. Stops a " +
-                 "player standing on a chunk boundary from thrashing.")]
+        [Tooltip("Radius in metres where trees get real colliders. Small on purpose: " +
+                 "this is the only band that supports interaction.")]
+        [SerializeField] private float _colliderRadius = 48f;
+
+        [Tooltip("Metres a centre must move before residency is recalculated.")]
         [SerializeField] private float _restreamDistance = 16f;
 
         [Header("Clearing")]
@@ -36,28 +37,35 @@ namespace ChopChop.World
 
         private ChunkStore _store;
         private TreeRenderer _renderer;
+        private TreeColliderBand _colliders;
+        private TreeDiffStore _diffs;
 
-        private Transform _centre;
+        private TreeClient _treeClient;
+        private Transform _localCentre;
+        private readonly List<Vector3> _centres = new();
+        private readonly List<long> _subscriptionScratch = new();
         private Vector3 _lastStreamPosition;
         private bool _hasStreamed;
+        private bool _renders;
+
+        /// <summary>Supplies every position that should keep chunks loaded.</summary>
+        public delegate void CentreProvider(List<Vector3> into);
+
+        /// <summary>
+        /// Set by the server to report all player positions. Left null on a client, which
+        /// falls back to its own player.
+        /// </summary>
+        public CentreProvider ServerCentres { get; set; }
 
         public ChunkStore Store => _store;
+        public TreeColliderBand Colliders => _colliders;
         public int LoadedChunks => _store?.LoadedCount ?? 0;
+        public int ActiveColliders => _colliders?.ActiveCount ?? 0;
         public int LastDrawCalls => _renderer?.LastDrawCallCount ?? 0;
         public int LastInstances => _renderer?.LastInstanceCount ?? 0;
 
-        private readonly List<Vector3> _centres = new(1);
-
         private void Awake()
         {
-            /* A headless server has no camera and nothing to draw for. Generating and
-             * instancing a forest nobody can see would be pure waste. */
-            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
-            {
-                enabled = false;
-                return;
-            }
-
             if (_biomes == null)
             {
                 Debug.LogError("[World] No BiomeSet assigned; nothing can generate.");
@@ -65,6 +73,15 @@ namespace ChopChop.World
                 return;
             }
 
+            // A headless server has no camera and nothing to draw for, but it still needs
+            // chunks and colliders.
+            _renders = SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null;
+
+            Rebuild();
+        }
+
+        private void Rebuild()
+        {
             WorldGenSettings settings = new()
             {
                 ClearingRadius = _clearingRadius,
@@ -72,62 +89,118 @@ namespace ChopChop.World
             };
 
             _store = new ChunkStore(_worldSeed, _biomes, settings);
-            _renderer = new TreeRenderer(_biomes);
+            _colliders = new TreeColliderBand(transform, _colliderRadius);
+
+            if (_renders)
+                _renderer = new TreeRenderer(_biomes);
         }
+
+        private void Start()
+        {
+            /* Collected rather than injected: this component lives in the world scene,
+             * which the server loads after boot, so the bootstrap has no reference to it
+             * and it has none back. */
+            if (!Core.ServiceLocator.TryGet(out WorldStreamingContext context))
+                return;
+
+            _diffs = context.Diffs;
+            ServerCentres = context.ServerCentres;
+            SetWorldSeed(context.WorldSeed);
+
+            Core.ServiceLocator.TryGet(out _treeClient);
+        }
+
+        /// <summary>The diff store deciding which trees are felled. Set once at boot.</summary>
+        public void SetDiffStore(TreeDiffStore diffs) => _diffs = diffs;
 
         /// <summary>Point streaming at a transform, normally the local player.</summary>
         public void SetCentre(Transform centre)
         {
-            _centre = centre;
+            _localCentre = centre;
             _hasStreamed = false;
         }
 
-        /// <summary>Replaces the seed and drops everything generated from the old one.</summary>
         public void SetWorldSeed(int worldSeed)
         {
             if (_worldSeed == worldSeed && _store != null)
                 return;
 
             _worldSeed = worldSeed;
-
-            WorldGenSettings settings = new()
-            {
-                ClearingRadius = _clearingRadius,
-                ClearingRampWidth = _clearingRampWidth,
-            };
-
-            _store = new ChunkStore(_worldSeed, _biomes, settings);
+            _colliders?.Clear();
+            Rebuild();
             _hasStreamed = false;
         }
+
+        /// <summary>Drops a felled tree's collider immediately rather than next stream.</summary>
+        public void OnTreeFelled(long chunkKey, ushort localIndex)
+            => _colliders?.Remove(chunkKey, localIndex);
 
         private void Update()
         {
             if (_store == null)
                 return;
 
-            // Fall back to the camera so the forest is visible in a scene with no player
-            // yet — useful for looking at generation without standing up a session.
-            Transform centre = _centre != null ? _centre
+            CollectCentres();
+
+            if (_centres.Count == 0)
+                return;
+
+            /* Restream on movement rather than every frame. The threshold also stops a
+             * player standing on a chunk boundary from loading and evicting the same
+             * chunks forever. */
+            bool moved = !_hasStreamed
+                         || (_centres[0] - _lastStreamPosition).sqrMagnitude >= _restreamDistance * _restreamDistance;
+
+            if (moved)
+            {
+                _store.UpdateResidency(_centres, _radiusInChunks);
+                _lastStreamPosition = _centres[0];
+                _hasStreamed = true;
+
+                PublishSubscriptions();
+            }
+
+            // Colliders update every frame: the band is small, and a player walking into
+            // range needs something to hit now rather than at the next restream.
+            _colliders.Update(_store.Loaded, _centres, _diffs);
+
+            if (_renders)
+                _renderer.Render(_store.Loaded, null);
+        }
+
+        /// <summary>
+        /// Tells the server which chunks this client is standing near, so it knows where
+        /// to send tree updates. Clients only — the server has no one to tell.
+        /// </summary>
+        private void PublishSubscriptions()
+        {
+            if (ServerCentres != null || _treeClient == null)
+                return;
+
+            _subscriptionScratch.Clear();
+
+            foreach (ChunkData chunk in _store.Loaded)
+                _subscriptionScratch.Add(chunk.Key);
+
+            _treeClient.SetSubscribedChunks(_subscriptionScratch);
+        }
+
+        private void CollectCentres()
+        {
+            _centres.Clear();
+
+            if (ServerCentres != null)
+            {
+                ServerCentres(_centres);
+                return;
+            }
+
+            Transform centre = _localCentre != null ? _localCentre
                 : Camera.main != null ? Camera.main.transform
                 : null;
 
-            if (centre == null)
-                return;
-
-            Vector3 position = centre.position;
-
-            if (!_hasStreamed || (position - _lastStreamPosition).sqrMagnitude >= _restreamDistance * _restreamDistance)
-            {
-                _centres.Clear();
-                _centres.Add(position);
-
-                _store.UpdateResidency(_centres, _radiusInChunks);
-
-                _lastStreamPosition = position;
-                _hasStreamed = true;
-            }
-
-            _renderer.Render(_store.Loaded, null);
+            if (centre != null)
+                _centres.Add(centre.position);
         }
     }
 }

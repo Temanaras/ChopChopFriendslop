@@ -550,6 +550,7 @@ MonoBehaviour:
   _port: 7770
   _newWorldSeed: 1337
   _worldScene: Assets/Scenes/Clearing.unity
+  _biomes: {fileID: 11400000, guid: 0c9bb25e5e4f62f49a07e404757cdf51, type: 2}
 --- !u!114 &1939508642
 MonoBehaviour:
   m_ObjectHideFlags: 0

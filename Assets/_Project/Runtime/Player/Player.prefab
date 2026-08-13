@@ -197,6 +197,7 @@ GameObject:
   - component: {fileID: 2393832213705041744}
   - component: {fileID: 3940495554710672691}
   - component: {fileID: 3790284400546874992}
+  - component: {fileID: 761554422986088545}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -350,3 +351,23 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6174397332781119763}
   _networkObjectCache: {fileID: 0}
   _camera: {fileID: 5001655767538900803}
+--- !u!114 &761554422986088545
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6288506282220318207}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 86db437e077748840a4284bfbb30fe87, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.Player::ChopChop.Player.PlayerChopper
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6174397332781119763}
+  _networkObjectCache: {fileID: 0}
+  _range: 4
+  _origin: {fileID: 8729139381801415211}
+  _hitMask:
+    serializedVersion: 2
+    m_Bits: 4294967295

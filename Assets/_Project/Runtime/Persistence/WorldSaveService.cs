@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using ChopChop.World;
 using UnityEngine;
 
 namespace ChopChop.Persistence
@@ -101,10 +103,72 @@ namespace ChopChop.Persistence
         /// Writes immediately. Also called on player join, player leave, and graceful
         /// shutdown (TECH 6.4).
         /// </summary>
+        /// <summary>
+        /// The live diff store. Set once at boot; its contents are folded into the world
+        /// on every write and restored from it on load.
+        /// </summary>
+        public TreeDiffStore Diffs { get; set; }
+
+        /// <summary>
+        /// Pushes the loaded world's diffs into the live store. Called after loading, so
+        /// a restarted server picks up the road players cut before it went down.
+        /// </summary>
+        public void RestoreDiffs()
+        {
+            if (World == null || Diffs == null)
+                return;
+
+            Diffs.Clear();
+
+            foreach (KeyValuePair<long, ChunkSave> pair in World.Chunks)
+            {
+                if (pair.Value?.Diffs != null && pair.Value.Diffs.Length > 0)
+                    Diffs.SetChunkDiffs(pair.Key, pair.Value.Diffs);
+            }
+        }
+
+        /// <summary>
+        /// Folds the live diffs back into the world before writing. Chunks whose diffs
+        /// have all gone — reclaimed by regrowth — lose their entry entirely, so an old
+        /// world shrinks back down rather than only ever growing.
+        /// </summary>
+        private void CaptureDiffs()
+        {
+            if (World == null || Diffs == null)
+                return;
+
+            _staleChunks.Clear();
+
+            foreach (KeyValuePair<long, ChunkSave> pair in World.Chunks)
+            {
+                if (Diffs.GetDiffs(pair.Key) == null)
+                    _staleChunks.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _staleChunks.Count; i++)
+                World.Chunks.Remove(_staleChunks[i]);
+
+            foreach (KeyValuePair<long, List<TreeDiff>> pair in Diffs.All)
+            {
+                if (!World.Chunks.TryGetValue(pair.Key, out ChunkSave chunk))
+                {
+                    chunk = new ChunkSave();
+                    World.Chunks[pair.Key] = chunk;
+                }
+
+                chunk.Diffs = pair.Value.ToArray();
+                chunk.LastVisitedTick = World.WorldTick;
+            }
+        }
+
+        private readonly List<long> _staleChunks = new();
+
         public bool Save()
         {
             if (World == null)
                 return false;
+
+            CaptureDiffs();
 
             _secondsSinceSave = 0f;
             World.SaveVersion++;

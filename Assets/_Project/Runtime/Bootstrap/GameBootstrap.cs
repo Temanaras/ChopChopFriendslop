@@ -1,6 +1,9 @@
+using System.Collections.Generic;
 using ChopChop.Core;
 using ChopChop.Networking;
 using ChopChop.Persistence;
+using ChopChop.World;
+using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Managing.Scened;
 using FishNet.Transporting.Multipass;
@@ -44,6 +47,10 @@ namespace ChopChop.Bootstrap
                  "receive it automatically on connect.")]
         [SerializeField] private string _worldScene = "Assets/Scenes/Clearing.unity";
 
+        [Tooltip("Biomes the server generates from. Must match what clients use, or the " +
+                 "two will disagree about which trees exist.")]
+        [SerializeField] private ChopChop.Biomes.BiomeSet _biomes;
+
         /// <summary>Resolved once at boot; the command line wins over the inspector.</summary>
         public AppRole Role { get; private set; }
 
@@ -52,6 +59,13 @@ namespace ChopChop.Bootstrap
         private LobbyService _lobby;
         private SessionCoordinator _session;
         private WorldSaveService _world;
+
+        private TreeDiffStore _diffs;
+        private TreeServer _treeServer;
+        private TreeClient _treeClient;
+        private ChunkStore _serverChunks;
+        private WorldStreamingContext _streamingContext;
+        private WorldStreamer _streamer;
 
         private bool _hasColdStartInvite;
         private ulong _coldStartLobbyId;
@@ -95,12 +109,38 @@ namespace ChopChop.Bootstrap
             if (_steam != null)
                 ServiceLocator.Register(_steam);
 
+            /* One diff store per process. On a server it is the authority; on a client a
+             * cache of what the server said. A hosted server shares one instance, which
+             * is correct — there is only one truth in that process. */
+            _diffs = new TreeDiffStore();
+            ServiceLocator.Register(_diffs);
+
+            _streamingContext = new WorldStreamingContext { Diffs = _diffs, WorldSeed = _newWorldSeed };
+            ServiceLocator.Register(_streamingContext);
+
+            if (Role.RunsClient())
+            {
+                _treeClient = new TreeClient(_networkManager, _diffs);
+                ServiceLocator.Register(_treeClient);
+                _treeClient.TreeChanged += HandleTreeChanged;
+            }
+
             /* The world is server-owned, so this is only wired where a server runs.
              * Deliberately not created here: a HostedServer that finds its port taken
              * falls back to being a plain client, and a client holding a world save
              * service would be a second writer pointed at the same file. */
             if (Role.RunsServer())
                 _session.ServerStarted += OnServerStarted;
+        }
+
+        /// <summary>A felled tree loses its collider at once rather than at the next stream.</summary>
+        private void HandleTreeChanged(long chunkKey, ushort localIndex)
+        {
+            if (!_diffs.IsFelled(chunkKey, localIndex))
+                return;
+
+            if (_streamer != null)
+                _streamer.OnTreeFelled(chunkKey, localIndex);
         }
 
         private void OnServerStarted()
@@ -118,8 +158,39 @@ namespace ChopChop.Bootstrap
                 return;
             }
 
+            /* The server generates its own chunks. It cannot rely on the streamer in the
+             * scene, because it needs tree data to validate chops whether or not anything
+             * is being drawn — and on a headless server, nothing is. */
+            _serverChunks = new ChunkStore(_world.World.WorldSeed, _biomes, WorldGenSettings.Default);
+
+            _world.Diffs = _diffs;
+            _world.RestoreDiffs();
+
+            _treeServer = new TreeServer(_networkManager, _serverChunks, _diffs);
+            ServiceLocator.Register(_treeServer);
+
+            // The streamer picks these up when the world scene loads.
+            _streamingContext.WorldSeed = _world.World.WorldSeed;
+            _streamingContext.ServerCentres = CollectServerCentres;
+
+            Debug.Log($"[World] {_diffs.ChunkCount} chunk(s) carry player changes.");
+
             LoadWorldScene();
             _state.Set(AppState.InGame);
+        }
+
+        /// <summary>
+        /// Every player position the server must keep chunks and colliders around
+        /// (TECH 5.4). A tree with no collider cannot be hit, so a player whose
+        /// surroundings the server has not loaded could not chop anything.
+        /// </summary>
+        private void CollectServerCentres(List<Vector3> into)
+        {
+            foreach (NetworkConnection connection in _networkManager.ServerManager.Clients.Values)
+            {
+                if (connection?.FirstObject != null)
+                    into.Add(connection.FirstObject.transform.position);
+            }
         }
 
         /// <summary>
@@ -162,6 +233,10 @@ namespace ChopChop.Bootstrap
         private void Update()
         {
             _world?.Tick(Time.deltaTime);
+
+            // The streamer appears with the world scene, so it is found rather than wired.
+            if (_streamer == null)
+                _streamer = FindObjectOfType<WorldStreamer>();
         }
 
         /// <summary>
@@ -273,8 +348,13 @@ namespace ChopChop.Bootstrap
             if (_session != null)
                 _session.ServerStarted -= OnServerStarted;
 
+            if (_treeClient != null)
+                _treeClient.TreeChanged -= HandleTreeChanged;
+
             // Order matters: the world writes a final snapshot on dispose, and it should
             // do that while the session is still up rather than during teardown.
+            _treeServer?.Dispose();
+            _treeClient?.Dispose();
             _world?.Dispose();
             _session?.Dispose();
             _lobby?.Dispose();
