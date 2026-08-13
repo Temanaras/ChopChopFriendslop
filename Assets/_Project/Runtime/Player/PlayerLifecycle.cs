@@ -66,9 +66,12 @@ namespace ChopChop.Player
             _awaitingRespawn = true;
             _respawnAt = Time.time + _respawnDelay;
 
-            /* Everything that should cost a player their run goes through here. Nothing
-             * does yet, because there is nothing to carry — but when inventory exists,
-             * this is the one place that has to drop it. */
+            /* Carried cargo is the cost of dying; the paperdoll is not (TECH 9.3). This
+             * is the single place that happens, so making death drop a lootable container
+             * instead stays a small change rather than a refactor. */
+            if (TryGetComponent(out PlayerPaperdoll paperdoll))
+                paperdoll.DropCarriedOnDeath();
+
             Died?.Invoke(this, killer);
         }
 

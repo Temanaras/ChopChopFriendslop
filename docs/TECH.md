@@ -895,7 +895,11 @@ fun?" before any content scale exists.
 7. **Regrowth.** Placeholder rates, so it can be felt early. ✅
 8. **One gun, hitscan, server-validated.** ✅
 9. **One enemy** that chases and can be killed. ✅
-10. **Paperdoll + cabin storage.** Minimal, but proves the transferable-item rule.
+10. **Paperdoll + cabin storage.** Minimal, but proves the transferable-item rule. ✅
+
+**Milestone 1 is complete.** The loop runs: chop with a tier-gated axe, watch the
+forest close back over, shoot something that hunts you, put the axe in the chest for
+whoever needs it next — and it is all still there after a restart.
 
 Deliberately **not** in Milestone 1: Steam game-server transport (invites to a
 dedicated server), mounts, multiple rings, crafting tree, the Xarol.

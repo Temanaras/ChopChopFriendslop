@@ -6,6 +6,7 @@ using ChopChop.World;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Managing.Scened;
+using FishNet.Transporting;
 using FishNet.Transporting.Multipass;
 using UnityEngine;
 
@@ -57,6 +58,14 @@ namespace ChopChop.Bootstrap
         [Tooltip("Enemy the director spawns. Leave empty to disable spawning entirely.")]
         [SerializeField] private FishNet.Object.NetworkObject _enemyPrefab;
 
+        [Header("Items")]
+        [Tooltip("Every item in the game. Validated at boot; duplicate or missing ids " +
+                 "are refused rather than allowed to corrupt saves.")]
+        [SerializeField] private ChopChop.Items.ItemRegistry _items;
+
+        [Tooltip("Given to a player the first time they spawn, so the axe gate can be felt.")]
+        [SerializeField] private ChopChop.Items.ItemDefinition _startingAxe;
+
         /// <summary>Resolved once at boot; the command line wins over the inspector.</summary>
         public AppRole Role { get; private set; }
 
@@ -73,6 +82,7 @@ namespace ChopChop.Bootstrap
         private RegrowthService _regrowth;
         private ChopChop.Combat.WeaponServer _weapons;
         private ChopChop.AI.EnemyDirector _director;
+        private ChopChop.Cabin.CabinStorage _storage;
         private WorldStreamingContext _streamingContext;
         private WorldStreamer _streamer;
 
@@ -121,6 +131,15 @@ namespace ChopChop.Bootstrap
             /* One diff store per process. On a server it is the authority; on a client a
              * cache of what the server said. A hosted server shares one instance, which
              * is correct — there is only one truth in that process. */
+            /* Validated before anything can hold an item. A duplicate id means two items
+             * share a save entry and one silently becomes the other; a missing one means
+             * an item a player owns stops existing on load. Both are silent otherwise. */
+            if (_items != null && !_items.Validate())
+                Debug.LogError("[Bootstrap] Item registry is invalid; items will not behave correctly.");
+
+            if (_items != null)
+                ServiceLocator.Register(_items);
+
             _diffs = new TreeDiffStore();
             ServiceLocator.Register(_diffs);
 
@@ -190,8 +209,19 @@ namespace ChopChop.Bootstrap
             ServiceLocator.Register(_regrowth);
 
             _treeServer = new TreeServer(_networkManager, _serverChunks, _diffs,
-                () => _world.World?.WorldTick ?? 0u, _regrowth);
+                () => _world.World?.WorldTick ?? 0u, _regrowth)
+            {
+                // The gate now reads the server's copy of the paperdoll. Before this it
+                // was a constant, so every tier looked choppable.
+                AxeTierProvider = AxeTierFor,
+            };
+
             ServiceLocator.Register(_treeServer);
+
+            _storage = new ChopChop.Cabin.CabinStorage(_world.World.Cabin, _items);
+            ServiceLocator.Register(_storage);
+
+            _networkManager.ServerManager.OnRemoteConnectionState += HandleClientForItems;
 
             _weapons = new ChopChop.Combat.WeaponServer(_networkManager, ~0);
             ServiceLocator.Register(_weapons);
@@ -213,6 +243,54 @@ namespace ChopChop.Bootstrap
 
             LoadWorldScene();
             _state.Set(AppState.InGame);
+        }
+
+        /// <summary>
+        /// The equipped axe tier for a connection, read from the server's own paperdoll.
+        /// Bare hands are tier 0, which fells nothing.
+        /// </summary>
+        private byte AxeTierFor(NetworkConnection connection)
+        {
+            if (connection?.FirstObject == null)
+                return 0;
+
+            return connection.FirstObject.TryGetComponent(out ChopChop.Player.PlayerPaperdoll paperdoll)
+                ? paperdoll.AxeTier
+                : (byte)0;
+        }
+
+        /// <summary>
+        /// Hands a new player their starting kit and binds the registry, which lives
+        /// outside the scene the player is spawned into.
+        /// </summary>
+        private void HandleClientForItems(NetworkConnection connection, RemoteConnectionStateArgs args)
+        {
+            if (args.ConnectionState != RemoteConnectionState.Started)
+                return;
+
+            StartCoroutine(EquipWhenSpawned(connection));
+        }
+
+        private System.Collections.IEnumerator EquipWhenSpawned(NetworkConnection connection)
+        {
+            // The player object is spawned a moment after the connection is up.
+            float deadline = Time.time + 10f;
+
+            while (connection.FirstObject == null && Time.time < deadline)
+                yield return null;
+
+            if (connection.FirstObject == null)
+                yield break;
+
+            if (!connection.FirstObject.TryGetComponent(out ChopChop.Player.PlayerPaperdoll paperdoll))
+                yield break;
+
+            paperdoll.Bind(_items);
+
+            /* Handed out rather than granted as a stat: the axe is an item, so it can be
+             * dropped in the chest for whoever needs it next (TECH 2.3). */
+            if (_startingAxe != null && !paperdoll.HasEquipped(ChopChop.Items.ItemSlot.Axe))
+                paperdoll.TryEquip(new ChopChop.Items.ItemStack(_startingAxe.Id, 1), out _);
         }
 
         private void HandleWorldSceneLoaded(SceneLoadEndEventArgs args)
@@ -433,6 +511,9 @@ namespace ChopChop.Bootstrap
 
             if (_world != null && _networkManager != null)
                 _networkManager.TimeManager.OnTick -= _world.AdvanceTick;
+
+            if (_networkManager != null)
+                _networkManager.ServerManager.OnRemoteConnectionState -= HandleClientForItems;
 
             // Order matters: the world writes a final snapshot on dispose, and it should
             // do that while the session is still up rather than during teardown.

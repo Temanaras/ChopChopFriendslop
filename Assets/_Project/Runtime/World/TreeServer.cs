@@ -45,8 +45,17 @@ namespace ChopChop.World
         /// <summary>Minimum ticks between accepted chops from one player.</summary>
         public uint SwingCooldownTicks { get; set; } = 15;
 
-        /// <summary>Tool tier the player is assumed to hold until the paperdoll exists.</summary>
-        public byte AssumedAxeTier { get; set; } = 1;
+        /// <summary>
+        /// Reads a connection's equipped axe tier. Supplied at boot so this assembly does
+        /// not have to know what a paperdoll is.
+        /// </summary>
+        public Func<NetworkConnection, byte> AxeTierProvider { get; set; }
+
+        /// <summary>Used when no provider is set, e.g. in tests.</summary>
+        public byte FallbackAxeTier { get; set; } = 1;
+
+        private byte AxeTierFor(NetworkConnection connection)
+            => AxeTierProvider != null ? AxeTierProvider(connection) : FallbackAxeTier;
 
         /// <summary>How far a player may be from a tree and still fell it.</summary>
         public float ChopRange { get; set; } = 4f;
@@ -240,8 +249,9 @@ namespace ChopChop.World
             }
 
             /* Tier is a hard gate, checked before range so the player is told the useful
-             * thing: walking closer will not help if the axe is wrong. */
-            if (AssumedAxeTier < tree.TierIndex)
+             * thing: walking closer will not help if the axe is wrong. Read from the
+             * server's copy of the paperdoll, never from anything the client sent. */
+            if (AxeTierFor(connection) < tree.TierIndex)
             {
                 rejection = ChopRejection.TierTooLow;
                 return false;

@@ -7,16 +7,13 @@ using UnityEngine.InputSystem;
 namespace ChopChop.Player
 {
     /// <summary>
-    /// Which tool the primary action currently uses.
+    /// Which equipped tool the primary action currently uses.
     ///
-    /// A deliberate stand-in, not the real thing. Once the paperdoll exists this becomes
-    /// a read of the <see cref="ItemSlot.Axe"/> and <see cref="ItemSlot.Gun"/> slots and
-    /// the tier gating comes with it (TECH 9.2). For now it exists because the axe and
-    /// the gun both want the primary button, and having them both fire on one click is
-    /// worse than either.
-    ///
-    /// Client-local: this only decides which local system reacts to a button. Both of
-    /// them still ask the server for permission, so nothing here is worth cheating.
+    /// Selection is client-local — it only decides which local system reacts to a
+    /// button, and both still ask the server for permission, so there is nothing here
+    /// worth cheating. What is *equippable* is not local: a tool can only be selected if
+    /// the paperdoll actually holds it, and the server has the final say on both the tier
+    /// gate and every shot.
     /// </summary>
     public sealed class PlayerLoadout : NetworkBehaviour
     {
@@ -30,9 +27,26 @@ namespace ChopChop.Player
 
         private InputAction _next;
         private InputAction _previous;
+        private PlayerPaperdoll _paperdoll;
 
         public Tool Selected => _selected;
-        public bool IsHolding(Tool tool) => _selected == tool;
+
+        /// <summary>
+        /// True only when this tool is both selected and actually equipped. Bare hands
+        /// select nothing, so an empty axe slot means no swing rather than an invisible
+        /// one the server would refuse anyway.
+        /// </summary>
+        public bool IsHolding(Tool tool) => _selected == tool && HasEquipped(tool);
+
+        private bool HasEquipped(Tool tool)
+        {
+            if (_paperdoll == null)
+                return true;   // no paperdoll wired: fall back to letting tools work
+
+            return _paperdoll.HasEquipped(SlotFor(tool));
+        }
+
+        private static ItemSlot SlotFor(Tool tool) => tool == Tool.Gun ? ItemSlot.Gun : ItemSlot.Axe;
 
         /// <summary>Raised locally when the selection changes, for HUD and held-item visuals.</summary>
         public event Action<Tool> SelectionChanged;
@@ -46,6 +60,8 @@ namespace ChopChop.Player
                 enabled = false;
                 return;
             }
+
+            TryGetComponent(out _paperdoll);
 
             InputActionAsset actions = InputSystem.actions;
 
