@@ -32,6 +32,20 @@ namespace ChopChop.World
             => _byConnection.TryGetValue(connection, out HashSet<long> keys) && keys.Contains(chunkKey);
 
         /// <summary>
+        /// Every chunk with at least one subscriber. A chunk is occupied exactly when
+        /// someone is subscribed to it (TECH 7.1), which is what stops regrowth
+        /// progressing in ground players are holding.
+        /// </summary>
+        public void CollectOccupiedChunks(List<long> into)
+        {
+            foreach (KeyValuePair<long, HashSet<NetworkConnection>> pair in _byChunk)
+            {
+                if (pair.Value.Count > 0)
+                    into.Add(pair.Key);
+            }
+        }
+
+        /// <summary>
         /// Replaces a connection's subscriptions wholesale.
         /// </summary>
         /// <param name="added">

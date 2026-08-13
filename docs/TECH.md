@@ -499,6 +499,23 @@ weave between trunks. Too slow and the map ends up permanently stripped. **Ship
 this system in the vertical slice with placeholder rates** so it can be felt
 early — it cannot be tuned on paper.
 
+**Current placeholders**, at tick rate 30 and `regrowthRatePerTick = 0.0001`:
+
+| | |
+| --- | --- |
+| One tree reclaimed per | ~5.6 minutes of absence |
+| Cap per evaluation | 6 trees |
+| So a chunk maxes out after | ~33 minutes away |
+
+Two things to feel for once there is real play:
+
+- **Is a road worth cutting?** Six trees back is enough to close a narrow one, so
+  half an hour away may already be too punishing.
+- **Can the map recover?** The cap means a month away reclaims the same six trees
+  as half an hour. That protects against a chunk snapping back to pristine (§7.3),
+  but it also means heavy clear-cutting is close to permanent. If the world ends
+  up stripped, the cap is the thing to raise, not the rate.
+
 ---
 
 ## 8. Connection, Late Join, and Server Lifetime
@@ -857,10 +874,10 @@ fun?" before any content scale exists.
 3a. **Server pivot.** Roles, server-owned save, headless build, connect by address.
    Done before step 4 because step 5 bakes the topology in permanently. ✅
 4. **Chunk system + deterministic generation.** One biome, one tree tier.
-   Determinism test in CI.
-5. **One choppable tree** with diffs replicating, plus the late-join path.
-6. **Density grid + darkness.** Placeholder curve. Cheap, and it's the mood.
-7. **Regrowth.** Placeholder rates, so it can be felt early.
+   Determinism test in CI. ✅ *(test written; CI itself deferred)*
+5. **One choppable tree** with diffs replicating, plus the late-join path. ✅
+6. **Density grid + darkness.** Placeholder curve. Cheap, and it's the mood. ✅
+7. **Regrowth.** Placeholder rates, so it can be felt early. ✅
 8. **One gun, hitscan, server-validated.**
 9. **One enemy** that chases and can be killed.
 10. **Paperdoll + cabin storage.** Minimal, but proves the transferable-item rule.

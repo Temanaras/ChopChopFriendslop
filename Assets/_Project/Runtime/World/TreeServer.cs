@@ -57,16 +57,48 @@ namespace ChopChop.World
         public TreeDiffStore Diffs => _diffs;
         public ChunkSubscriptions Subscriptions => _subscriptions;
 
-        public TreeServer(NetworkManager networkManager, ChunkStore chunks, TreeDiffStore diffs)
+        /// <param name="worldTick">
+        /// Persistent elapsed world time, not FishNet's network tick. Regrowth measures
+        /// against this and it must survive restarts, or every felled tree would look
+        /// freshly cut each session and nothing would ever grow back.
+        /// </param>
+        public TreeServer(NetworkManager networkManager, ChunkStore chunks, TreeDiffStore diffs,
+            Func<uint> worldTick, RegrowthService regrowth = null)
         {
             _networkManager = networkManager ? networkManager : throw new ArgumentNullException(nameof(networkManager));
             _chunks = chunks ?? throw new ArgumentNullException(nameof(chunks));
             _diffs = diffs ?? throw new ArgumentNullException(nameof(diffs));
+            _worldTick = worldTick ?? throw new ArgumentNullException(nameof(worldTick));
+            _regrowth = regrowth;
 
             _networkManager.ServerManager.RegisterBroadcast<SubscribeChunksBroadcast>(HandleSubscribe);
             _networkManager.ServerManager.RegisterBroadcast<ChopRequestBroadcast>(HandleChopRequest);
             _networkManager.ServerManager.OnRemoteConnectionState += HandleConnectionState;
+            _networkManager.TimeManager.OnTick += HandleTick;
             _subscribed = true;
+        }
+
+        private readonly Func<uint> _worldTick;
+        private readonly RegrowthService _regrowth;
+        private readonly List<long> _occupiedScratch = new();
+
+        /// <summary>
+        /// Keeps every held chunk's clock current. While anyone is subscribed the gap
+        /// never grows, so regrowth cannot creep into ground players are working
+        /// (TECH 7.1).
+        /// </summary>
+        private void HandleTick()
+        {
+            if (_regrowth == null)
+                return;
+
+            uint tick = _worldTick();
+
+            _occupiedScratch.Clear();
+            _subscriptions.CollectOccupiedChunks(_occupiedScratch);
+
+            for (int i = 0; i < _occupiedScratch.Count; i++)
+                _regrowth.MarkOccupied(_occupiedScratch[i], tick);
         }
 
         public void Dispose()
@@ -78,6 +110,7 @@ namespace ChopChop.World
             _networkManager.ServerManager.UnregisterBroadcast<SubscribeChunksBroadcast>(HandleSubscribe);
             _networkManager.ServerManager.UnregisterBroadcast<ChopRequestBroadcast>(HandleChopRequest);
             _networkManager.ServerManager.OnRemoteConnectionState -= HandleConnectionState;
+            _networkManager.TimeManager.OnTick -= HandleTick;
 
             _subscriptions.Clear();
             _lastChopTick.Clear();
@@ -106,9 +139,19 @@ namespace ChopChop.World
              * re-sends their whole subscription set every time it changes, and resending
              * diffs for chunks they never left would scale badly with how much they move
              * rather than with how much they discover. */
+            uint tick = _worldTick();
+
             for (int i = 0; i < _addedScratch.Count; i++)
             {
                 long key = _addedScratch[i];
+
+                /* Regrowth runs when a chunk becomes occupied and before its diffs go
+                 * out, so the joining player is told the world as it is now rather than
+                 * as it was when they left. Only on the transition into occupancy — a
+                 * second player arriving at a chunk someone is already holding must not
+                 * re-evaluate it. */
+                if (_regrowth != null && _subscriptions.SubscribersOf(key).Count == 1)
+                    _regrowth.Evaluate(key, tick);
 
                 _networkManager.ServerManager.Broadcast(connection, new ChunkDiffsBroadcast
                 {
@@ -122,7 +165,11 @@ namespace ChopChop.World
 
         private void HandleChopRequest(NetworkConnection connection, ChopRequestBroadcast message, Channel channel)
         {
+            // Rate limiting uses the network tick, which is the right clock for "how fast
+            // is this player swinging". The world tick below is the right clock for "when
+            // was this tree felled", which has to outlive the session.
             uint tick = _networkManager.TimeManager.Tick;
+            uint worldTick = _worldTick();
 
             if (!TryValidate(connection, message, tick, out ChunkData chunk, out GeneratedTree tree,
                     out ChopRejection rejection))
@@ -133,7 +180,7 @@ namespace ChopChop.World
 
             _lastChopTick[connection] = tick;
 
-            if (!_diffs.TryApplyDamage(message.ChunkKey, message.LocalIndex, DamagePerSwing, tick,
+            if (!_diffs.TryApplyDamage(message.ChunkKey, message.LocalIndex, DamagePerSwing, worldTick,
                     out byte remaining, out bool felled))
             {
                 Reject(connection, message, ChopRejection.AlreadyFelled, tree.TierIndex);
@@ -146,7 +193,7 @@ namespace ChopChop.World
                 {
                     ChunkKey = message.ChunkKey,
                     LocalIndex = message.LocalIndex,
-                    FelledAtTick = tick,
+                    FelledAtTick = worldTick,
                 });
 
                 TreeFelled?.Invoke(message.ChunkKey, message.LocalIndex, chunk.Origin + tree.LocalPosition);

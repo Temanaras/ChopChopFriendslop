@@ -64,6 +64,7 @@ namespace ChopChop.Bootstrap
         private TreeServer _treeServer;
         private TreeClient _treeClient;
         private ChunkStore _serverChunks;
+        private RegrowthService _regrowth;
         private WorldStreamingContext _streamingContext;
         private WorldStreamer _streamer;
 
@@ -133,6 +134,16 @@ namespace ChopChop.Bootstrap
                 _session.ServerStarted += OnServerStarted;
         }
 
+        /// <summary>
+        /// A reclaimed tree is standing again, so the collider band has to be told —
+        /// otherwise the next stream would be the first time anything could hit it.
+        /// </summary>
+        private void HandleTreeReclaimed(long chunkKey, ushort localIndex)
+        {
+            // Nothing to remove; the band adds it back on its next pass now that the
+            // diff is gone. This hook exists for loot cleanup and effects later.
+        }
+
         /// <summary>A felled tree loses its collider at once rather than at the next stream.</summary>
         private void HandleTreeChanged(long chunkKey, ushort localIndex)
         {
@@ -166,8 +177,17 @@ namespace ChopChop.Bootstrap
             _world.Diffs = _diffs;
             _world.RestoreDiffs();
 
-            _treeServer = new TreeServer(_networkManager, _serverChunks, _diffs);
+            _regrowth = new RegrowthService(_diffs, _biomes);
+            _regrowth.TreeReclaimed += HandleTreeReclaimed;
+            ServiceLocator.Register(_regrowth);
+
+            _treeServer = new TreeServer(_networkManager, _serverChunks, _diffs,
+                () => _world.World?.WorldTick ?? 0u, _regrowth);
             ServiceLocator.Register(_treeServer);
+
+            // World time advances on the tick loop, not per frame, so it is the same
+            // clock everywhere regardless of how fast the server is rendering.
+            _networkManager.TimeManager.OnTick += _world.AdvanceTick;
 
             // The streamer picks these up when the world scene loads.
             _streamingContext.WorldSeed = _world.World.WorldSeed;
@@ -350,6 +370,12 @@ namespace ChopChop.Bootstrap
 
             if (_treeClient != null)
                 _treeClient.TreeChanged -= HandleTreeChanged;
+
+            if (_regrowth != null)
+                _regrowth.TreeReclaimed -= HandleTreeReclaimed;
+
+            if (_world != null && _networkManager != null)
+                _networkManager.TimeManager.OnTick -= _world.AdvanceTick;
 
             // Order matters: the world writes a final snapshot on dispose, and it should
             // do that while the session is still up rather than during teardown.

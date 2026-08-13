@@ -18,10 +18,30 @@ namespace ChopChop.World
     {
         private readonly Dictionary<long, List<TreeDiff>> _byChunk = new();
 
+        /* Kept alongside the diffs rather than inside them: it is a property of the
+         * chunk, not of any one tree, and only chunks with diffs have anything to
+         * regrow. The two dictionaries are kept in step by every mutator below. */
+        private readonly Dictionary<long, uint> _lastVisited = new();
+
         /// <summary>Chunks that have at least one diff.</summary>
         public int ChunkCount => _byChunk.Count;
 
         public IReadOnlyDictionary<long, List<TreeDiff>> All => _byChunk;
+
+        /// <summary>
+        /// World tick when a player was last subscribed to this chunk. Regrowth is
+        /// measured from here (TECH 7.1), so a chunk players are actively holding never
+        /// reclaims.
+        /// </summary>
+        public uint GetLastVisitedTick(long chunkKey)
+            => _lastVisited.TryGetValue(chunkKey, out uint tick) ? tick : 0u;
+
+        public void SetLastVisitedTick(long chunkKey, uint worldTick)
+        {
+            // Only meaningful where there is something to reclaim.
+            if (_byChunk.ContainsKey(chunkKey))
+                _lastVisited[chunkKey] = worldTick;
+        }
 
         /// <summary>Diffs for a chunk, or null when it is untouched.</summary>
         public List<TreeDiff> GetDiffs(long chunkKey)
@@ -60,6 +80,10 @@ namespace ChopChop.World
             {
                 diffs = new List<TreeDiff>();
                 _byChunk[chunkKey] = diffs;
+
+                // A chunk being chopped is a chunk someone is standing in, so it starts
+                // its regrowth clock now rather than at tick zero.
+                _lastVisited[chunkKey] = worldTick;
             }
 
             int index = IndexOf(diffs, localIndex);
@@ -106,19 +130,25 @@ namespace ChopChop.World
             // Keep the invariant: no diffs means no entry, so an untouched chunk costs
             // nothing to hold or to save.
             if (diffs.Count == 0)
+            {
                 _byChunk.Remove(chunkKey);
+                _lastVisited.Remove(chunkKey);
+            }
 
             return true;
         }
 
         /// <summary>Replaces a whole chunk's diffs. Used when the server sends them.</summary>
-        public void SetChunkDiffs(long chunkKey, IReadOnlyList<TreeDiff> diffs)
+        public void SetChunkDiffs(long chunkKey, IReadOnlyList<TreeDiff> diffs, uint lastVisitedTick = 0)
         {
             if (diffs == null || diffs.Count == 0)
             {
                 _byChunk.Remove(chunkKey);
+                _lastVisited.Remove(chunkKey);
                 return;
             }
+
+            _lastVisited[chunkKey] = lastVisitedTick;
 
             if (!_byChunk.TryGetValue(chunkKey, out List<TreeDiff> list))
             {
@@ -151,7 +181,11 @@ namespace ChopChop.World
                 diffs.Add(diff);
         }
 
-        public void Clear() => _byChunk.Clear();
+        public void Clear()
+        {
+            _byChunk.Clear();
+            _lastVisited.Clear();
+        }
 
         private bool TryFind(long chunkKey, ushort localIndex, out List<TreeDiff> diffs, out int index)
         {

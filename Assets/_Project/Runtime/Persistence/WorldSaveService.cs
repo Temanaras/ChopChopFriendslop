@@ -85,6 +85,21 @@ namespace ChopChop.Persistence
             return status;
         }
 
+        /// <summary>
+        /// Advances authoritative world time by one tick. Call from the server's tick
+        /// loop, not from Update.
+        ///
+        /// This is the clock regrowth measures against (TECH 7.1), so it has to be
+        /// persistent elapsed world time rather than FishNet's network tick — that one
+        /// restarts from zero every session, which would make every felled tree look
+        /// freshly cut after a restart and stall regrowth forever.
+        /// </summary>
+        public void AdvanceTick()
+        {
+            if (World != null)
+                World.WorldTick++;
+        }
+
         /// <summary>Advances the autosave clock. Call once per frame on the server.</summary>
         public void Tick(float deltaSeconds)
         {
@@ -123,7 +138,12 @@ namespace ChopChop.Persistence
             foreach (KeyValuePair<long, ChunkSave> pair in World.Chunks)
             {
                 if (pair.Value?.Diffs != null && pair.Value.Diffs.Length > 0)
-                    Diffs.SetChunkDiffs(pair.Key, pair.Value.Diffs);
+                {
+                    /* lastVisitedTick travels with the diffs. Dropping it would restart
+                     * every chunk's regrowth clock at zero on load, so a world left alone
+                     * for a week would reclaim nothing on the next visit. */
+                    Diffs.SetChunkDiffs(pair.Key, pair.Value.Diffs, pair.Value.LastVisitedTick);
+                }
             }
         }
 
@@ -157,7 +177,10 @@ namespace ChopChop.Persistence
                 }
 
                 chunk.Diffs = pair.Value.ToArray();
-                chunk.LastVisitedTick = World.WorldTick;
+
+                // The store's own clock, not "now" — a chunk nobody is holding must keep
+                // accumulating its gap across a save and reload.
+                chunk.LastVisitedTick = Diffs.GetLastVisitedTick(pair.Key);
             }
         }
 

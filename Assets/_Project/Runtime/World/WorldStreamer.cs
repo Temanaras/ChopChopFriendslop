@@ -169,18 +169,37 @@ namespace ChopChop.World
         }
 
         /// <summary>
-        /// Tells the server which chunks this client is standing near, so it knows where
-        /// to send tree updates. Clients only — the server has no one to tell.
+        /// Tells the server which chunks the local player is standing in.
+        ///
+        /// Always sent, including from a hosted server. It is tempting to skip it there
+        /// because both halves share one diff store in-process and the reply is
+        /// redundant — but subscription is also what defines occupancy, and occupancy is
+        /// what stops regrowth reclaiming ground players are holding (TECH 7.1). Skipping
+        /// it left a hosted session with no occupied chunks at all, so regrowth never
+        /// ran in the way people actually play.
+        ///
+        /// Built from the local player's own radius, never from what is resident: on a
+        /// server, residency follows *every* player, and subscribing this client to all
+        /// of them would be wrong.
         /// </summary>
         private void PublishSubscriptions()
         {
-            if (ServerCentres != null || _treeClient == null)
+            if (_treeClient == null || _localCentre == null)
                 return;
 
             _subscriptionScratch.Clear();
 
-            foreach (ChunkData chunk in _store.Loaded)
-                _subscriptionScratch.Add(chunk.Key);
+            ChunkStore.WorldToChunk(_localCentre.position, out int centreX, out int centreZ);
+
+            for (int z = centreZ - _radiusInChunks; z <= centreZ + _radiusInChunks; z++)
+            for (int x = centreX - _radiusInChunks; x <= centreX + _radiusInChunks; x++)
+            {
+                int dx = x - centreX;
+                int dz = z - centreZ;
+
+                if (dx * dx + dz * dz <= _radiusInChunks * _radiusInChunks)
+                    _subscriptionScratch.Add(ChunkKey.Pack(x, z));
+            }
 
             _treeClient.SetSubscribedChunks(_subscriptionScratch);
         }
