@@ -551,6 +551,7 @@ MonoBehaviour:
   _newWorldSeed: 1337
   _worldScene: Assets/Scenes/Clearing.unity
   _biomes: {fileID: 11400000, guid: 0c9bb25e5e4f62f49a07e404757cdf51, type: 2}
+  _targetDummy: {fileID: 5015332149634169184, guid: 719926bb839e5fd4fbd834db55b1ca41, type: 3}
 --- !u!114 &1939508642
 MonoBehaviour:
   m_ObjectHideFlags: 0

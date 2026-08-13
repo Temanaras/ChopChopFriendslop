@@ -698,6 +698,12 @@ Primarily gunplay. Hitscan only — no networked projectiles in the vertical sli
 Client visuals are optimistic. A rejected shot simply deals no damage. Do not
 attempt rollback — at 4 players it will not be noticed.
 
+**Fire from the body, aim with the camera.** The origin check compares against
+where the server has the *player*, and a third-person camera sits metres behind
+them — firing from the camera fails plausibility on every shot. Trace from the
+camera to find what the crosshair is on, then aim the body at that point. The same
+applies to the chop reach in §5.6, which measures range from the player.
+
 ### 10.3 Enemy AI
 
 **AI runs server-only.** Enemies are `NetworkObject`s with `NetworkTransform`,
@@ -878,7 +884,7 @@ fun?" before any content scale exists.
 5. **One choppable tree** with diffs replicating, plus the late-join path. ✅
 6. **Density grid + darkness.** Placeholder curve. Cheap, and it's the mood. ✅
 7. **Regrowth.** Placeholder rates, so it can be felt early. ✅
-8. **One gun, hitscan, server-validated.**
+8. **One gun, hitscan, server-validated.** ✅
 9. **One enemy** that chases and can be killed.
 10. **Paperdoll + cabin storage.** Minimal, but proves the transferable-item rule.
 

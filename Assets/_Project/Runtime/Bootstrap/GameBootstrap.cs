@@ -51,6 +51,10 @@ namespace ChopChop.Bootstrap
                  "two will disagree about which trees exist.")]
         [SerializeField] private ChopChop.Biomes.BiomeSet _biomes;
 
+        [Tooltip("Placeholder targets so the gun has something to prove itself against. " +
+                 "Replaced by the enemy in step 9.")]
+        [SerializeField] private GameObject _targetDummy;
+
         /// <summary>Resolved once at boot; the command line wins over the inspector.</summary>
         public AppRole Role { get; private set; }
 
@@ -65,6 +69,7 @@ namespace ChopChop.Bootstrap
         private TreeClient _treeClient;
         private ChunkStore _serverChunks;
         private RegrowthService _regrowth;
+        private ChopChop.Combat.WeaponServer _weapons;
         private WorldStreamingContext _streamingContext;
         private WorldStreamer _streamer;
 
@@ -185,6 +190,14 @@ namespace ChopChop.Bootstrap
                 () => _world.World?.WorldTick ?? 0u, _regrowth);
             ServiceLocator.Register(_treeServer);
 
+            _weapons = new ChopChop.Combat.WeaponServer(_networkManager, ~0);
+            ServiceLocator.Register(_weapons);
+
+            /* Deferred until the world scene is in. LoadWorldScene replaces every scene,
+             * so anything spawned before it is destroyed on arrival — the dummies did
+             * spawn, and were gone a frame later. */
+            _networkManager.SceneManager.OnLoadEnd += HandleWorldSceneLoaded;
+
             // World time advances on the tick loop, not per frame, so it is the same
             // clock everywhere regardless of how fast the server is rendering.
             _networkManager.TimeManager.OnTick += _world.AdvanceTick;
@@ -197,6 +210,38 @@ namespace ChopChop.Bootstrap
 
             LoadWorldScene();
             _state.Set(AppState.InGame);
+        }
+
+        private void HandleWorldSceneLoaded(SceneLoadEndEventArgs args)
+        {
+            _networkManager.SceneManager.OnLoadEnd -= HandleWorldSceneLoaded;
+            SpawnTargetDummies();
+        }
+
+        /// <summary>
+        /// Something to shoot at until there is an enemy to shoot at. Server-spawned so
+        /// they are real NetworkObjects with real server-owned health, which is what
+        /// makes them worth testing against — a local prop would prove nothing.
+        /// </summary>
+        private void SpawnTargetDummies()
+        {
+            if (_targetDummy == null)
+                return;
+
+            Vector3[] positions =
+            {
+                new(6f, 0f, 14f),
+                new(-9f, 0f, 16f),
+                new(2f, 0f, 22f),
+            };
+
+            foreach (Vector3 position in positions)
+            {
+                GameObject instance = Instantiate(_targetDummy, position, Quaternion.identity);
+                _networkManager.ServerManager.Spawn(instance);
+            }
+
+            Debug.Log($"[Combat] Spawned {positions.Length} target dummies.");
         }
 
         /// <summary>
@@ -379,6 +424,7 @@ namespace ChopChop.Bootstrap
 
             // Order matters: the world writes a final snapshot on dispose, and it should
             // do that while the session is still up rather than during teardown.
+            _weapons?.Dispose();
             _treeServer?.Dispose();
             _treeClient?.Dispose();
             _world?.Dispose();
