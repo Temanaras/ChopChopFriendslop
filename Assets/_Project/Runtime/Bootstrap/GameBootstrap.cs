@@ -51,9 +51,11 @@ namespace ChopChop.Bootstrap
                  "two will disagree about which trees exist.")]
         [SerializeField] private ChopChop.Biomes.BiomeSet _biomes;
 
-        [Tooltip("Placeholder targets so the gun has something to prove itself against. " +
-                 "Replaced by the enemy in step 9.")]
+        [Tooltip("Placeholder targets so the gun has something to prove itself against.")]
         [SerializeField] private GameObject _targetDummy;
+
+        [Tooltip("Enemy the director spawns. Leave empty to disable spawning entirely.")]
+        [SerializeField] private FishNet.Object.NetworkObject _enemyPrefab;
 
         /// <summary>Resolved once at boot; the command line wins over the inspector.</summary>
         public AppRole Role { get; private set; }
@@ -70,6 +72,7 @@ namespace ChopChop.Bootstrap
         private ChunkStore _serverChunks;
         private RegrowthService _regrowth;
         private ChopChop.Combat.WeaponServer _weapons;
+        private ChopChop.AI.EnemyDirector _director;
         private WorldStreamingContext _streamingContext;
         private WorldStreamer _streamer;
 
@@ -216,6 +219,14 @@ namespace ChopChop.Bootstrap
         {
             _networkManager.SceneManager.OnLoadEnd -= HandleWorldSceneLoaded;
             SpawnTargetDummies();
+
+            /* The director needs the density field, and the density field needs a chunk
+             * store, so it can only exist once the world is up. Enemy positions are never
+             * saved (TECH 6.3) — everything it spawns is rebuilt from scratch each run. */
+            _director = new ChopChop.AI.EnemyDirector(
+                _networkManager, _enemyPrefab, new DensityField(_serverChunks), _biomes);
+
+            ServiceLocator.Register(_director);
         }
 
         /// <summary>
@@ -298,6 +309,7 @@ namespace ChopChop.Bootstrap
         private void Update()
         {
             _world?.Tick(Time.deltaTime);
+            _director?.Tick(Time.deltaTime);
 
             // The streamer appears with the world scene, so it is found rather than wired.
             if (_streamer == null)
@@ -424,6 +436,7 @@ namespace ChopChop.Bootstrap
 
             // Order matters: the world writes a final snapshot on dispose, and it should
             // do that while the session is still up rather than during teardown.
+            _director?.Dispose();
             _weapons?.Dispose();
             _treeServer?.Dispose();
             _treeClient?.Dispose();

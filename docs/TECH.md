@@ -710,6 +710,15 @@ applies to the chop reach in §5.6, which measures range from the player.
 spawned and despawned by the server. Clients receive transforms and play
 animations; they never run behavior logic.
 
+**State is the animation contract.** `EnemyState` (Idle, Patrol, Chase, Attack,
+Stagger, Dead) and planar speed are both replicated, and `EnemyAnimationBridge`
+turns them into Animator parameters. Speed is replicated rather than derived from
+transform deltas, which would be noisy at any real ping and make a locomotion
+blend jitter. The enum values are wire format — append, never renumber.
+
+A rig drops in by replacing the `Model` child and pointing the bridge at its
+Animator; no behaviour code is involved.
+
 Cull aggressively: despawn enemies with no player within ~120m. Use
 `NetworkObserver` distance conditions so transforms aren't sent to distant
 clients.
@@ -885,7 +894,7 @@ fun?" before any content scale exists.
 6. **Density grid + darkness.** Placeholder curve. Cheap, and it's the mood. ✅
 7. **Regrowth.** Placeholder rates, so it can be felt early. ✅
 8. **One gun, hitscan, server-validated.** ✅
-9. **One enemy** that chases and can be killed.
+9. **One enemy** that chases and can be killed. ✅
 10. **Paperdoll + cabin storage.** Minimal, but proves the transferable-item rule.
 
 Deliberately **not** in Milestone 1: Steam game-server transport (invites to a
