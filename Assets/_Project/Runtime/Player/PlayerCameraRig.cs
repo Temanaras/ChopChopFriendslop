@@ -1,3 +1,4 @@
+using ChopChop.World;
 using FishNet.Object;
 using UnityEngine;
 
@@ -30,6 +31,18 @@ namespace ChopChop.Player
             // Every client has exactly one owned player, so exactly one camera and one
             // AudioListener end up active.
             _camera.SetActive(IsOwner);
+
+            if (!IsOwner)
+                return;
+
+            /* The forest streams around whoever is playing here. Found rather than
+             * injected because the streamer lives in the world scene and the player is
+             * spawned into it by the server — neither can hold a serialised reference to
+             * the other. */
+            WorldStreamer streamer = FindObjectOfType<WorldStreamer>();
+
+            if (streamer != null)
+                streamer.SetCentre(transform);
         }
     }
 }
