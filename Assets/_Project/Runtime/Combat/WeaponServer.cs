@@ -82,7 +82,24 @@ namespace ChopChop.Combat
             => _ammo.TryGetValue(connection, out ushort ammo) ? ammo : MagazineSize;
 
         /// <summary>Refills a magazine. Server-only; hooked to a reload input later.</summary>
-        public void Reload(NetworkConnection connection) => _ammo[connection] = MagazineSize;
+        public void Reload(NetworkConnection connection)
+        {
+            _ammo[connection] = MagazineSize;
+            PushAmmo(connection);
+        }
+
+        /// <summary>
+        /// Mirrors the authoritative count out to the owning client so a HUD can read it.
+        /// The number here stays the one that decides whether a shot happens.
+        /// </summary>
+        private void PushAmmo(NetworkConnection connection)
+        {
+            if (connection?.FirstObject == null)
+                return;
+
+            if (connection.FirstObject.TryGetComponent(out WeaponAmmo ammo))
+                ammo.Set(AmmoFor(connection), MagazineSize);
+        }
 
         private void HandleConnectionState(NetworkConnection connection, RemoteConnectionStateArgs args)
         {
@@ -105,6 +122,7 @@ namespace ChopChop.Combat
 
             _lastShotTick[connection] = tick;
             _ammo[connection] = (ushort)(AmmoFor(connection) - 1);
+            PushAmmo(connection);
 
             /* Re-raycast from the server's own world rather than trusting what the client
              * says it hit. The direction is taken from the client because that is aim,

@@ -248,6 +248,7 @@ GameObject:
   - component: {fileID: 1436792377690960959}
   - component: {fileID: 3238243329369979797}
   - component: {fileID: 6708768860203005687}
+  - component: {fileID: 4064139590957492231}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -525,6 +526,21 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 6174397332781119763}
   _networkObjectCache: {fileID: 0}
   _inventorySlots: 12
+--- !u!114 &4064139590957492231
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6288506282220318207}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ddfc904fe3280a43be44557a320ad74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.Combat::ChopChop.Combat.WeaponAmmo
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6174397332781119763}
+  _networkObjectCache: {fileID: 0}
 --- !u!1 &8237440820950473662
 GameObject:
   m_ObjectHideFlags: 0

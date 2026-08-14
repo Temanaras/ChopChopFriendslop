@@ -259,6 +259,17 @@ namespace ChopChop.Bootstrap
                 : (byte)0;
         }
 
+        /// <summary>A connection's carried container, or null if they have no player yet.</summary>
+        private ChopChop.Items.ItemContainer InventoryFor(NetworkConnection connection)
+        {
+            if (connection?.FirstObject == null)
+                return null;
+
+            return connection.FirstObject.TryGetComponent(out ChopChop.Player.PlayerPaperdoll paperdoll)
+                ? paperdoll.Inventory
+                : null;
+        }
+
         /// <summary>
         /// Hands a new player their starting kit and binds the registry, which lives
         /// outside the scene the player is spawned into.
@@ -287,6 +298,10 @@ namespace ChopChop.Bootstrap
 
             paperdoll.Bind(_items);
 
+            // Give the HUD its starting ammo reading rather than leaving it at zero until
+            // the first shot.
+            _weapons?.Reload(connection);
+
             /* Handed out rather than granted as a stat: the axe is an item, so it can be
              * dropped in the chest for whoever needs it next (TECH 2.3). */
             if (_startingAxe != null && !paperdoll.HasEquipped(ChopChop.Items.ItemSlot.Axe))
@@ -297,6 +312,15 @@ namespace ChopChop.Bootstrap
         {
             _networkManager.SceneManager.OnLoadEnd -= HandleWorldSceneLoaded;
             SpawnTargetDummies();
+
+            /* The chest lives in the world scene, so it can only be wired once that scene
+             * has arrived. It needs a way to reach a player's carried container, which is
+             * supplied here because the Cabin assembly deliberately knows nothing about
+             * players. */
+            ChopChop.Cabin.CabinChest chest = FindObjectOfType<ChopChop.Cabin.CabinChest>();
+
+            if (chest != null)
+                chest.InventoryProvider = InventoryFor;
 
             /* The director needs the density field, and the density field needs a chunk
              * store, so it can only exist once the world is up. Enemy positions are never
