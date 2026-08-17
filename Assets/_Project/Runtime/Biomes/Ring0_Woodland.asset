@@ -16,34 +16,12 @@ MonoBehaviour:
   InnerRadius: 0
   BlendBandWidth: 30
   Trees:
-  - Mesh: {fileID: 4300000, guid: 33148e9ffe61c45e1b4cc76e93b334c6, type: 3}
+  - Mesh: {fileID: 4300000, guid: a92ca4eee0d1c3247a71a03481773593, type: 2}
     Materials:
-    - {fileID: 2100000, guid: edb19995e207344ce8f8c358b14c9df4, type: 2}
-    - {fileID: 2100000, guid: 4eb0c7a472a0a4f5484d29dd62bcbf2a, type: 2}
+    - {fileID: 2100000, guid: 4b38374df84eba64f9b887665ae56023, type: 2}
     Tier: 1
-    Weight: 1.5
-    ScaleRange: {x: 0.35, y: 0.5}
-  - Mesh: {fileID: 4300000, guid: 6b8ae1fe522144f7888402b17f5284a5, type: 3}
-    Materials:
-    - {fileID: 2100000, guid: 4eb0c7a472a0a4f5484d29dd62bcbf2a, type: 2}
-    - {fileID: 2100000, guid: edb19995e207344ce8f8c358b14c9df4, type: 2}
-    Tier: 1
-    Weight: 1.5
-    ScaleRange: {x: 0.35, y: 0.5}
-  - Mesh: {fileID: 4300002, guid: 70545e90e33ff4d439418b623de5b048, type: 3}
-    Materials:
-    - {fileID: 2100000, guid: 4eb0c7a472a0a4f5484d29dd62bcbf2a, type: 2}
-    - {fileID: 2100000, guid: edb19995e207344ce8f8c358b14c9df4, type: 2}
-    Tier: 1
-    Weight: 3
-    ScaleRange: {x: 0.3, y: 0.45}
-  - Mesh: {fileID: 4300000, guid: 82424bd6542874a35b8cd837f171615e, type: 3}
-    Materials:
-    - {fileID: 2100000, guid: 4eb0c7a472a0a4f5484d29dd62bcbf2a, type: 2}
-    - {fileID: 2100000, guid: edb19995e207344ce8f8c358b14c9df4, type: 2}
-    Tier: 1
-    Weight: 3
-    ScaleRange: {x: 0.3, y: 0.45}
+    Weight: 1
+    ScaleRange: {x: 0.85, y: 1.25}
   BaseDensity: 200
   RegrowthRatePerTick: 0.0001
   DensityToDarkness:
