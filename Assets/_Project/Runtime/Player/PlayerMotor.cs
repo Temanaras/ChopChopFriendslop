@@ -88,6 +88,15 @@ namespace ChopChop.Player
         /// <summary>Most recent input actually ticked, used to extrapolate for spectators.</summary>
         private MoveData _lastTickedMove;
 
+        /// <summary>
+        /// Planar speed in metres per second, for driving a locomotion blend.
+        ///
+        /// Valid on every machine rather than only the owner: state forwarding means
+        /// spectators replay the same inputs through <see cref="Simulate"/>, so they
+        /// arrive at the same speed rather than having to guess it from transform deltas.
+        /// </summary>
+        public float PlanarSpeed { get; private set; }
+
         private void Awake()
         {
             _controller = GetComponent<CharacterController>();
@@ -204,6 +213,12 @@ namespace ChopChop.Player
             }
 
             _controller.Move(motion * delta);
+
+            /* Only from a ticked run, never a replay. Reconciliation replays many ticks
+             * in a single frame, and letting those write here would make the animation
+             * flicker through whatever the player was doing seconds ago. */
+            if (state.ContainsTicked())
+                PlanarSpeed = new Vector2(motion.x, motion.z).magnitude;
         }
 
         [Reconcile]
