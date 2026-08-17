@@ -96,22 +96,33 @@ namespace ChopChop.World
                 if (pair.Value.Count == 0)
                     continue;
 
-                if (!TryGetSpecies(pair.Key, out Mesh mesh, out Material material))
+                if (!TryGetSpecies(pair.Key, out Mesh mesh, out Material[] materials))
                     continue;
 
-                RenderParams parameters = new(material)
-                {
-                    worldBounds = bounds,
-                    shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On,
-                    receiveShadows = true,
-                    camera = camera,
-                };
+                /* A submesh at a time, each with its own material. Tree models split
+                 * trunk from canopy, so drawing only submesh 0 leaves a bare pole
+                 * standing where a tree should be. */
+                int submeshes = Mathf.Min(mesh.subMeshCount, materials.Length);
 
-                DrawBatched(in parameters, mesh, pair.Value);
+                for (int submesh = 0; submesh < submeshes; submesh++)
+                {
+                    if (materials[submesh] == null)
+                        continue;
+
+                    RenderParams parameters = new(materials[submesh])
+                    {
+                        worldBounds = bounds,
+                        shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On,
+                        receiveShadows = true,
+                        camera = camera,
+                    };
+
+                    DrawBatched(in parameters, mesh, submesh, pair.Value);
+                }
             }
         }
 
-        private void DrawBatched(in RenderParams parameters, Mesh mesh, List<Matrix4x4> instances)
+        private void DrawBatched(in RenderParams parameters, Mesh mesh, int submesh, List<Matrix4x4> instances)
         {
             for (int start = 0; start < instances.Count; start += MaxInstancesPerBatch)
             {
@@ -120,7 +131,7 @@ namespace ChopChop.World
                 for (int i = 0; i < count; i++)
                     _batch[i] = instances[start + i];
 
-                Graphics.RenderMeshInstanced(parameters, mesh, 0, _batch, count);
+                Graphics.RenderMeshInstanced(parameters, mesh, submesh, _batch, count);
 
                 LastDrawCallCount++;
                 LastInstanceCount += count;
@@ -131,10 +142,10 @@ namespace ChopChop.World
         /// Species index is the tree's slot in its biome's entry list. One biome for now;
         /// this needs a proper registry once rings blend species across boundaries.
         /// </summary>
-        private bool TryGetSpecies(byte speciesIndex, out Mesh mesh, out Material material)
+        private bool TryGetSpecies(byte speciesIndex, out Mesh mesh, out Material[] materials)
         {
             mesh = null;
-            material = null;
+            materials = null;
 
             if (_biomes == null || _biomes.Count == 0)
                 return false;
@@ -145,9 +156,9 @@ namespace ChopChop.World
                 return false;
 
             mesh = biome.Trees[speciesIndex].Mesh;
-            material = biome.Trees[speciesIndex].Material;
+            materials = biome.Trees[speciesIndex].Materials;
 
-            return mesh != null && material != null;
+            return mesh != null && materials != null && materials.Length > 0;
         }
     }
 }

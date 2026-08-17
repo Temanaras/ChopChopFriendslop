@@ -178,6 +178,12 @@ namespace ChopChop.Atmosphere
             if (_field == null)
                 _field = new DensityField(_streamer.Store);
 
+            /* The local player, not the camera. TECH 12.2 says to sample at the player's
+             * position, and it matters: a third-person camera sits metres behind them and
+             * reports the darkness of a different patch of forest. Re-read each time
+             * rather than cached once, because the player spawns after this component. */
+            _viewer = _streamer.LocalCentre;
+
             if (_viewer == null && Camera.main != null)
                 _viewer = Camera.main.transform;
 

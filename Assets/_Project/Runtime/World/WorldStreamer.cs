@@ -59,6 +59,13 @@ namespace ChopChop.World
 
         public ChunkStore Store => _store;
         public TreeColliderBand Colliders => _colliders;
+
+        /// <summary>
+        /// The local player, once one exists. Anything asking "where is this client
+        /// standing" wants this rather than the camera, which on a third-person boom is
+        /// metres behind and reports a different part of the forest.
+        /// </summary>
+        public Transform LocalCentre => _localCentre;
         public int LoadedChunks => _store?.LoadedCount ?? 0;
         public int ActiveColliders => _colliders?.ActiveCount ?? 0;
         public int LastDrawCalls => _renderer?.LastDrawCallCount ?? 0;

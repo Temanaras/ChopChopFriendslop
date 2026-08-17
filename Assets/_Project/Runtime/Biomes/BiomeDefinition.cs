@@ -15,7 +15,11 @@ namespace ChopChop.Biomes
     public struct TreeSpawnEntry
     {
         public Mesh Mesh;
-        public Material Material;
+
+        [Tooltip("One per submesh, in order. Tree models routinely split trunk and canopy " +
+                 "into separate submeshes, and a single material would draw only the first " +
+                 "of them — a forest of bare trunks.")]
+        public Material[] Materials;
 
         [Tooltip("Tool tier required to fell this. Intrinsic to the tree once generated.")]
         public byte Tier;
