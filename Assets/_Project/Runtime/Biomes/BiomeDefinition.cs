@@ -53,10 +53,11 @@ namespace ChopChop.Biomes
         [Header("Trees")]
         public TreeSpawnEntry[] Trees = Array.Empty<TreeSpawnEntry>();
 
-        [Tooltip("Trees per chunk at full density, before masking. A chunk is 64m square. " +
-                 "The generator's placement grid caps this at 64; values above that " +
-                 "silently produce fewer trees than asked for.")]
-        [Range(0f, 64f)] public float BaseDensity = 40f;
+        [Tooltip("Trees per chunk before masking. A chunk is 64m square, so 200 is a tree " +
+                 "every 4.5m — a closed canopy with no horizon, which is the point. " +
+                 "Below about 120 it reads as parkland. The placement grid caps this at " +
+                 "256; above that you silently get fewer trees than asked for.")]
+        [Range(0f, 256f)] public float BaseDensity = 200f;
 
         [Header("Regrowth")]
         [Tooltip("Fraction of a felled tree reclaimed per tick while nobody is subscribed. " +

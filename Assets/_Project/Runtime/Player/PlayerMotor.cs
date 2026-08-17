@@ -82,6 +82,7 @@ namespace ChopChop.Player
 
         private CharacterController _controller;
         private PlayerInputReader _input;
+        private PlayerCameraRig _cameraRig;
 
         private float _verticalVelocity;
 
@@ -101,6 +102,7 @@ namespace ChopChop.Player
         {
             _controller = GetComponent<CharacterController>();
             _input = GetComponent<PlayerInputReader>();
+            _cameraRig = GetComponent<PlayerCameraRig>();
 
             // Reconcile is built at the end of OnTick, after the move has been applied.
             // CharacterController.Move resolves immediately rather than deferring to the
@@ -131,7 +133,33 @@ namespace ChopChop.Player
             if (!IsOwner || _input == null)
                 return default;
 
-            return new MoveData(_input.MoveInput, _input.ConsumeJump());
+            return new MoveData(ToWorldSpace(_input.MoveInput), _input.ConsumeJump());
+        }
+
+        /// <summary>
+        /// Turns camera-relative input into a world-space direction.
+        ///
+        /// Done here, on the owner, and never inside <see cref="Simulate"/>. The camera's
+        /// heading is a per-frame client-local value that the server has no copy of, and
+        /// a replayed tick must not re-read it — by then the player has looked somewhere
+        /// else, and the same input would move them somewhere new every replay. Baking
+        /// the heading into <see cref="MoveData"/> keeps the simulation a pure function of
+        /// the data it was handed, and costs nothing on the wire: the field was always a
+        /// direction, it is now simply a direction in world space.
+        /// </summary>
+        private Vector2 ToWorldSpace(Vector2 input)
+        {
+            if (_cameraRig == null || input.sqrMagnitude <= 0f)
+                return input;
+
+            float yaw = _cameraRig.Yaw * Mathf.Deg2Rad;
+            float sin = Mathf.Sin(yaw);
+            float cos = Mathf.Cos(yaw);
+
+            // Forward is (sin, cos) and right is (cos, -sin), matching a Y rotation.
+            return new Vector2(
+                input.x * cos + input.y * sin,
+                input.y * cos - input.x * sin);
         }
 
         public override void CreateReconcile()

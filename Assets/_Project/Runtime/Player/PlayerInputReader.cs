@@ -16,12 +16,27 @@ namespace ChopChop.Player
     public sealed class PlayerInputReader : MonoBehaviour
     {
         private InputAction _move;
+        private InputAction _look;
         private InputAction _jump;
         private bool _jumpLatched;
         private bool _resolved;
 
-        /// <summary>Movement on the XZ plane, unrotated. Camera-relative movement comes later.</summary>
+        /// <summary>
+        /// Movement on the XZ plane, relative to the camera. <see cref="PlayerMotor"/>
+        /// rotates it into world space before it becomes a tick's input.
+        /// </summary>
         public Vector2 MoveInput => _move?.ReadValue<Vector2>() ?? Vector2.zero;
+
+        /// <summary>
+        /// Look delta for this frame, in mouse counts rather than degrees.
+        ///
+        /// Already a per-frame delta, so it must never be scaled by
+        /// <c>Time.deltaTime</c> — a mouse that moved 40 counts moved 40 counts whether
+        /// the frame took 4ms or 40. A gamepad stick on the same action reports a
+        /// position rather than a delta and would need that scaling, which is the reason
+        /// this is exposed raw instead of pre-converted.
+        /// </summary>
+        public Vector2 LookInput => _look?.ReadValue<Vector2>() ?? Vector2.zero;
 
         /* Actions are resolved on enable rather than in Awake, and this component is
          * only enabled for the owning client. Unity runs Awake even on disabled
@@ -37,13 +52,14 @@ namespace ChopChop.Player
             }
 
             _move.Enable();
+            _look.Enable();
             _jump.Enable();
         }
 
         private bool TryResolveActions()
         {
             if (_resolved)
-                return _move != null && _jump != null;
+                return _move != null && _look != null && _jump != null;
 
             _resolved = true;
 
@@ -58,18 +74,21 @@ namespace ChopChop.Player
             }
 
             _move = actions.FindAction("Player/Move");
+            _look = actions.FindAction("Player/Look");
             _jump = actions.FindAction("Player/Jump");
 
-            if (_move != null && _jump != null)
+            if (_move != null && _look != null && _jump != null)
                 return true;
 
-            Debug.LogError("[Input] The project-wide actions asset has no Player/Move or Player/Jump action.");
+            Debug.LogError("[Input] The project-wide actions asset is missing one of " +
+                           "Player/Move, Player/Look or Player/Jump.");
             return false;
         }
 
         private void OnDisable()
         {
             _move?.Disable();
+            _look?.Disable();
             _jump?.Disable();
 
             // Don't let a press survive across a disable and fire on re-enable.

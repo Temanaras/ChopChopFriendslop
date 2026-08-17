@@ -58,11 +58,27 @@ namespace ChopChop.World
         /// per chunk.
         ///
         /// **This caps a chunk at one tree per cell**, so <see cref="MaxTreesPerChunk"/>
-        /// is the ceiling on any biome's BaseDensity. TECH 5.1 targets ~40 in the dense
-        /// ring, so there is room, but a biome asking for more will silently get less.
-        /// Raising this changes generation output — bump <c>WorldGenVersion</c>.
+        /// is the ceiling on any biome's BaseDensity, and a biome asking for more silently
+        /// gets less. Raising this changes generation output — bump
+        /// <c>WorldGenVersion</c>.
+        ///
+        /// 16 across a 64m chunk, so a 4m cell. At 8 the ceiling was 64 trees per chunk
+        /// and the dense ring already sat at 40 of them, which left no room to make the
+        /// forest read as a wall rather than as parkland.
         /// </summary>
-        private const int PlacementGridResolution = 8;
+        private const int PlacementGridResolution = 16;
+
+        /// <summary>
+        /// Fraction of a cell a tree may wander from its centre.
+        ///
+        /// Below 1 this guarantees a minimum gap between neighbours — at a 4m cell and
+        /// 0.7, no two trees land closer than 1.2m. Full-cell jitter was harmless while
+        /// cells were 8m wide, but at the density this now generates it would routinely
+        /// intersect trunks, and intersecting trunks read as a modelling bug rather than
+        /// as a thicket. The grid stays visible in the result, which is the price of
+        /// not needing a rejection loop (TECH 14).
+        /// </summary>
+        private const float JitterFraction = 0.7f;
 
         /// <summary>Hard ceiling on trees in one chunk, set by the placement grid.</summary>
         public const int MaxTreesPerChunk = PlacementGridResolution * PlacementGridResolution;
@@ -95,7 +111,12 @@ namespace ChopChop.World
                 float rotation = random.NextFloat(0f, 360f);
                 float scaleRoll = random.NextFloat();
 
-                Vector3 local = new((gx + jitterX) * cell, 0f, (gz + jitterZ) * cell);
+                // Jitter about the cell centre rather than across the whole cell, so the
+                // inset applies on both sides and neighbours keep their minimum gap.
+                Vector3 local = new(
+                    (gx + 0.5f + (jitterX - 0.5f) * JitterFraction) * cell,
+                    0f,
+                    (gz + 0.5f + (jitterZ - 0.5f) * JitterFraction) * cell);
                 float distance = (origin + local).magnitude;
 
                 biomes.Resolve(distance, out BiomeDefinition current, out BiomeDefinition previous, out float blend);
@@ -131,7 +152,16 @@ namespace ChopChop.World
                 AccumulateDensity(density, local);
             }
 
-            NormalizeDensity(density);
+            /* Normalised against what this chunk's own biome asks for, not against a
+             * constant. Taken at the chunk centre: density varies across a ring boundary,
+             * but darkness is a smoothed field sampled metres at a time and the seam is
+             * far below what an eye can see. */
+            biomes.Resolve((origin + new Vector3(size * 0.5f, 0f, size * 0.5f)).magnitude,
+                out BiomeDefinition centreBiome, out _, out _);
+
+            NormalizeDensity(density, centreBiome != null
+                ? Mathf.Clamp01(centreBiome.BaseDensity / (PlacementGridResolution * PlacementGridResolution))
+                : 0.5f);
 
             return new ChunkData(chunkX, chunkZ, trees.ToArray(), density);
         }
@@ -211,23 +241,40 @@ namespace ChopChop.World
         }
 
         /// <summary>
-        /// Maps accumulated counts into roughly 0–1 against a fixed reference rather than
-        /// the chunk's own maximum. Normalising per chunk would make a sparse chunk look
-        /// as dark as a dense one, and the darkness system would stop meaning anything.
+        /// Maps accumulated counts into roughly 0–1 against how dense this biome is meant
+        /// to be, rather than against the chunk's own maximum. Normalising per chunk would
+        /// make a sparse chunk look as dark as a dense one and the darkness system would
+        /// stop meaning anything.
         /// </summary>
         /// <remarks>
-        /// The reference is measured, not guessed. At the ~40 trees per chunk TECH 5.1
-        /// targets, a 4m cell rarely holds more than one trunk, so a cell reads about
-        /// 1.0 from its own tree plus 0.35 per neighbour. A reference of 4 capped the
-        /// whole world at ~0.43 density and left over half the darkness range unusable.
+        /// Derived from <paramref name="occupancy"/> rather than a hand-tuned constant.
+        /// It was a constant, and the constant was wrong the moment anyone touched
+        /// BaseDensity: at 40 trees per chunk the right reference was 2.0, and reusing it
+        /// at 120 drove 36% of all cells to full darkness — a flat black plateau instead
+        /// of a forest that gets darker as you go in. That is a knob people are meant to
+        /// turn, so it must not quietly re-scale the whole world's lighting.
+        ///
+        /// The shape is measured. A cell reads 1.0 for its own tree plus 0.35 from each of
+        /// 8 neighbours, so a fully packed one reaches 3.8; scaled by how often cells are
+        /// actually occupied, that predicts the mean. The 1.7 puts full darkness near the
+        /// 97th percentile, which is where a sample of 16k cells showed thickets sitting.
         ///
         /// This is derived data, not placement: it runs after trees are chosen and is
-        /// never saved, so changing it does not move any tree and does not invalidate
-        /// diffs. No <c>WorldGenVersion</c> bump.
+        /// never saved, so changing it moves no tree and invalidates no diff. No
+        /// <c>WorldGenVersion</c> bump.
         /// </remarks>
-        private static void NormalizeDensity(float[] density)
+        /// <param name="occupancy">Fraction of placement cells the biome expects to fill.</param>
+        private static void NormalizeDensity(float[] density, float occupancy)
         {
-            const float reference = 2f;
+            const float packedCell = 1f + 0.35f * 8f;
+            const float darkestPercentile = 1.7f;
+
+            /* Floored at roughly one tree plus two neighbours. The linear model above
+             * assumes cells are occupied often enough to average out, and a sparse biome
+             * breaks that: measured at 40 trees per chunk it put 19% of cells at full
+             * darkness, because there a single trunk in an otherwise empty cell *is* the
+             * local maximum. A lone tree is not a canopy. */
+            float reference = Mathf.Max(1.7f, occupancy * packedCell * darkestPercentile);
 
             for (int i = 0; i < density.Length; i++)
                 density[i] = Mathf.Clamp01(density[i] / reference);
