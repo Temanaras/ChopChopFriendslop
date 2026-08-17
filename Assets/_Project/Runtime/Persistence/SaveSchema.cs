@@ -24,8 +24,10 @@ namespace ChopChop.Persistence
         /// 2: the placement grid went from 8 to 16 cells and jitter was inset to keep a
         /// minimum gap, so every tree in the world moved and the indices diffs refer to
         /// now name different trees.
+        /// 3: the starting clearing halved to a 30m radius, so chunks near the origin
+        /// grow trees where they previously grew none.
         /// </remarks>
-        public const uint WorldGenVersion = 2;
+        public const uint WorldGenVersion = 3;
     }
 
     /// <summary>

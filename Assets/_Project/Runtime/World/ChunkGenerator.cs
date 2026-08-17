@@ -22,8 +22,8 @@ namespace ChopChop.World
 
         public static WorldGenSettings Default => new()
         {
-            ClearingRadius = 60f,
-            ClearingRampWidth = 25f,
+            ClearingRadius = 30f,
+            ClearingRampWidth = 12.5f,
         };
     }
 

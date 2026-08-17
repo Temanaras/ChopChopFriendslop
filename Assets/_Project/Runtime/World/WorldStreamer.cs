@@ -32,8 +32,8 @@ namespace ChopChop.World
         [SerializeField] private float _restreamDistance = 16f;
 
         [Header("Clearing")]
-        [SerializeField] private float _clearingRadius = 60f;
-        [SerializeField] private float _clearingRampWidth = 25f;
+        [SerializeField] private float _clearingRadius = 30f;
+        [SerializeField] private float _clearingRampWidth = 12.5f;
 
         private ChunkStore _store;
         private TreeRenderer _renderer;

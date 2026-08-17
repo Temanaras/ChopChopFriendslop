@@ -18,6 +18,7 @@ namespace ChopChop.Player
         private InputAction _move;
         private InputAction _look;
         private InputAction _jump;
+        private InputAction _sprint;
         private bool _jumpLatched;
         private bool _resolved;
 
@@ -38,6 +39,13 @@ namespace ChopChop.Player
         /// </summary>
         public Vector2 LookInput => _look?.ReadValue<Vector2>() ?? Vector2.zero;
 
+        /// <summary>
+        /// Whether sprint is held right now. Sampled at tick time like movement rather
+        /// than latched like jump: holding it is the whole interaction, so there is no
+        /// brief press to miss between ticks.
+        /// </summary>
+        public bool SprintHeld => _sprint?.IsPressed() ?? false;
+
         /* Actions are resolved on enable rather than in Awake, and this component is
          * only enabled for the owning client. Unity runs Awake even on disabled
          * components, so resolving there would have every player on a headless server
@@ -54,12 +62,13 @@ namespace ChopChop.Player
             _move.Enable();
             _look.Enable();
             _jump.Enable();
+            _sprint.Enable();
         }
 
         private bool TryResolveActions()
         {
             if (_resolved)
-                return _move != null && _look != null && _jump != null;
+                return _move != null && _look != null && _jump != null && _sprint != null;
 
             _resolved = true;
 
@@ -76,12 +85,13 @@ namespace ChopChop.Player
             _move = actions.FindAction("Player/Move");
             _look = actions.FindAction("Player/Look");
             _jump = actions.FindAction("Player/Jump");
+            _sprint = actions.FindAction("Player/Sprint");
 
-            if (_move != null && _look != null && _jump != null)
+            if (_move != null && _look != null && _jump != null && _sprint != null)
                 return true;
 
             Debug.LogError("[Input] The project-wide actions asset is missing one of " +
-                           "Player/Move, Player/Look or Player/Jump.");
+                           "Player/Move, Player/Look, Player/Jump or Player/Sprint.");
             return false;
         }
 
@@ -90,6 +100,7 @@ namespace ChopChop.Player
             _move?.Disable();
             _look?.Disable();
             _jump?.Disable();
+            _sprint?.Disable();
 
             // Don't let a press survive across a disable and fire on re-enable.
             _jumpLatched = false;

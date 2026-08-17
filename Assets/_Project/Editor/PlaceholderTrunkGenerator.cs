@@ -126,25 +126,31 @@ namespace ChopChop.Editor
             var triangles = new int[Sides * 6 + Sides * 3];
             int t2 = 0;
 
+            /* Wound clockwise seen from outside. Unity takes (b-a)x(c-a) as the facing
+             * direction and culls back faces, so reversing these two lines turns the
+             * trunk inside out: the vertex normals still point outward and still light
+             * correctly, but what you see is the inside of the far wall. It reads as
+             * broken shading rather than as broken geometry, which is what makes it worth
+             * a comment. */
             for (int i = 0; i < Sides; i++)
             {
                 int bottom = i;
                 int top = i + ring;
 
                 triangles[t2++] = bottom;
-                triangles[t2++] = top;
                 triangles[t2++] = bottom + 1;
+                triangles[t2++] = top;
 
                 triangles[t2++] = bottom + 1;
-                triangles[t2++] = top;
                 triangles[t2++] = top + 1;
+                triangles[t2++] = top;
             }
 
             for (int i = 0; i < Sides; i++)
             {
                 triangles[t2++] = capCentre;
-                triangles[t2++] = capCentre + 1 + (i + 1) % Sides;
                 triangles[t2++] = capCentre + 1 + i;
+                triangles[t2++] = capCentre + 1 + (i + 1) % Sides;
             }
 
             Mesh mesh = new()

@@ -30,12 +30,19 @@ namespace ChopChop.Player
             public Vector2 Move;
             public bool Jump;
 
+            /// <summary>
+            /// Held, not latched. Unlike a jump there is no moment to miss — a sprint that
+            /// starts a tick late is invisible, where a dropped jump is not.
+            /// </summary>
+            public bool Sprint;
+
             private uint _tick;
 
-            public MoveData(Vector2 move, bool jump)
+            public MoveData(Vector2 move, bool jump, bool sprint)
             {
                 Move = move;
                 Jump = jump;
+                Sprint = sprint;
                 _tick = 0;
             }
 
@@ -70,6 +77,11 @@ namespace ChopChop.Player
 
         [Header("Movement")]
         [SerializeField] private float _moveSpeed = 5f;
+
+        [Tooltip("Multiplier on move speed while sprinting. No stamina yet — this is the " +
+                 "hook for it, and for anything else that wants to say how fast you go.")]
+        [SerializeField] private float _sprintMultiplier = 1.7f;
+
         [SerializeField] private float _jumpSpeed = 7f;
 
         [Tooltip("Multiplier on Physics.gravity. Above 1 makes the fall snappier than " +
@@ -133,7 +145,7 @@ namespace ChopChop.Player
             if (!IsOwner || _input == null)
                 return default;
 
-            return new MoveData(ToWorldSpace(_input.MoveInput), _input.ConsumeJump());
+            return new MoveData(ToWorldSpace(_input.MoveInput), _input.ConsumeJump(), _input.SprintHeld);
         }
 
         /// <summary>
@@ -203,6 +215,9 @@ namespace ChopChop.Player
 
                         // Never guess a jump. Holding jump across two ticks is unlikely
                         // and a wrong guess is the most visible kind of correction there is.
+                        // Sprint is carried, not cleared: it is normally held for seconds
+                        // at a time, so the last value is a good guess and dropping it
+                        // would stutter every spectated sprint.
                         md.Jump = false;
                     }
                 }
@@ -236,7 +251,13 @@ namespace ChopChop.Player
                 // but a diagonal on the keyboard must not move faster than a straight line.
                 Vector2 input = Vector2.ClampMagnitude(md.Move, 1f);
 
-                motion = new Vector3(input.x, 0f, input.y) * _moveSpeed;
+                /* Read from the tick's data, never from the input reader. This method is
+                 * replayed during reconciliation and runs on the server for a client who
+                 * is not at this keyboard, so the only sprint that exists here is the one
+                 * that arrived with the tick. */
+                float speed = md.Sprint ? _moveSpeed * _sprintMultiplier : _moveSpeed;
+
+                motion = new Vector3(input.x, 0f, input.y) * speed;
                 motion.y = _verticalVelocity;
             }
 
