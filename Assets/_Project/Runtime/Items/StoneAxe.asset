@@ -17,4 +17,5 @@ MonoBehaviour:
   Icon: {fileID: 0}
   ValidSlot: 1
   Tier: 1
+  HeldPrefab: {fileID: 6810743315654699899, guid: 5a30af0ebe8774947b56767b7361abd3, type: 3}
   MaxStack: 1

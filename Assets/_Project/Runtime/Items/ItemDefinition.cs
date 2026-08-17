@@ -34,6 +34,12 @@ namespace ChopChop.Items
                  "hard gate, not a slower chop (TECH 5.6).")]
         public byte Tier;
 
+        [Header("Visuals")]
+        [Tooltip("Shown in the hand while this is equipped. Its root is the grip: whatever " +
+                 "point sits at the prefab's origin is the point that lands in the fist, " +
+                 "so the offset is authored into the prefab rather than into the player.")]
+        public GameObject HeldPrefab;
+
         [Header("Stacking")]
         [Min(1)] public ushort MaxStack = 1;
 
