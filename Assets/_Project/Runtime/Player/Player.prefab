@@ -224,6 +224,7 @@ GameObject:
   - component: {fileID: 6708768860203005687}
   - component: {fileID: 4064139590957492231}
   - component: {fileID: 8682691700435110875}
+  - component: {fileID: 6042083798828908643}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -554,6 +555,23 @@ MonoBehaviour:
     LocalPosition: {x: 0, y: 0.073, z: 0}
     LocalEuler: {x: 351, y: 270, z: 34}
     Scale: 1
+--- !u!114 &6042083798828908643
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6288506282220318207}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1211a1fa49c2ef34d89d61aa52484482, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.Player::ChopChop.Player.PlayerInteractor
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 6174397332781119763}
+  _networkObjectCache: {fileID: 0}
+  _origin: {fileID: 5648020421828743307}
+  _aimBias: 0.6
 --- !u!1 &8237440820950473662
 GameObject:
   m_ObjectHideFlags: 0

@@ -523,6 +523,7 @@ GameObject:
   - component: {fileID: 1939508642}
   - component: {fileID: 1939508641}
   - component: {fileID: 1939508644}
+  - component: {fileID: 1939508645}
   m_Layer: 0
   m_Name: Bootstrap
   m_TagString: Untagged
@@ -600,6 +601,20 @@ MonoBehaviour:
   _address: 127.0.0.1
   _port: 7770
   _showWhileServing: 0
+--- !u!114 &1939508645
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1939508640}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8268c8463950a349a7ad3a34c230427, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.UI::ChopChop.UI.InteractionPrompt
+  _key: E
+  _screenHeight: 0.42
 --- !u!1 &1982001871
 GameObject:
   m_ObjectHideFlags: 0

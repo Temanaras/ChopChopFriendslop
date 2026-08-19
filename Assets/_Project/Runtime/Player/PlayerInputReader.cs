@@ -19,6 +19,8 @@ namespace ChopChop.Player
         private InputAction _look;
         private InputAction _jump;
         private InputAction _sprint;
+        private InputAction _interact;
+        private bool _interactLatched;
         private bool _jumpLatched;
         private bool _resolved;
 
@@ -63,12 +65,14 @@ namespace ChopChop.Player
             _look.Enable();
             _jump.Enable();
             _sprint.Enable();
+            _interact.Enable();
         }
 
         private bool TryResolveActions()
         {
             if (_resolved)
-                return _move != null && _look != null && _jump != null && _sprint != null;
+                return _move != null && _look != null && _jump != null
+                       && _sprint != null && _interact != null;
 
             _resolved = true;
 
@@ -86,12 +90,13 @@ namespace ChopChop.Player
             _look = actions.FindAction("Player/Look");
             _jump = actions.FindAction("Player/Jump");
             _sprint = actions.FindAction("Player/Sprint");
+            _interact = actions.FindAction("Player/Interact");
 
-            if (_move != null && _look != null && _jump != null && _sprint != null)
+            if (_move != null && _look != null && _jump != null && _sprint != null && _interact != null)
                 return true;
 
             Debug.LogError("[Input] The project-wide actions asset is missing one of " +
-                           "Player/Move, Player/Look, Player/Jump or Player/Sprint.");
+                           "Player/Move, Player/Look, Player/Jump, Player/Sprint or Player/Interact.");
             return false;
         }
 
@@ -101,6 +106,8 @@ namespace ChopChop.Player
             _look?.Disable();
             _jump?.Disable();
             _sprint?.Disable();
+            _interact?.Disable();
+            _interactLatched = false;
 
             // Don't let a press survive across a disable and fire on re-enable.
             _jumpLatched = false;
@@ -110,6 +117,20 @@ namespace ChopChop.Player
         {
             if (_jump != null && _jump.WasPressedThisFrame())
                 _jumpLatched = true;
+
+            if (_interact != null && _interact.WasPressedThisFrame())
+                _interactLatched = true;
+        }
+
+        /// <summary>
+        /// Reads and clears the latched interact press. Latched rather than polled so a
+        /// tap between two reads is not lost — the same reason jump is.
+        /// </summary>
+        public bool ConsumeInteract()
+        {
+            bool pressed = _interactLatched;
+            _interactLatched = false;
+            return pressed;
         }
 
         /// <summary>
