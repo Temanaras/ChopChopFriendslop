@@ -552,7 +552,7 @@ MonoBehaviour:
   - Slot: 1
     Bone: 18
     LocalPosition: {x: 0, y: 0.073, z: 0}
-    LocalEuler: {x: 351, y: 270, z: 4}
+    LocalEuler: {x: 351, y: 270, z: 34}
     Scale: 1
 --- !u!1 &8237440820950473662
 GameObject:

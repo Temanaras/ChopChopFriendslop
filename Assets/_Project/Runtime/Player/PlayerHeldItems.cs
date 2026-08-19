@@ -49,7 +49,16 @@ namespace ChopChop.Player
          * lays the axe's local +Z along pinky-to-index with the head leaving on the thumb
          * side, and the position is the palm, halfway from wrist to knuckles. Written
          * down as plain numbers because they are the kind of thing an animator will want
-         * to nudge in the inspector, but that is where they came from. */
+         * to nudge in the inspector, but that is where they came from.
+         *
+         * The roll about the shaft is the one axis a grip does not pin down, and idle and
+         * chop disagree about it — the two clips hold the wrist about 30 degrees apart, so
+         * no fixed roll is right for both. Measured across the whole sweep: the roll that
+         * cuts perfectly edge-first shows almost no blade while walking, and the one that
+         * shows the most blade strikes the tree with its cheek. This sits at the knee of
+         * that curve, keeping 0.74 of the best rest silhouette for a 27-degree cant at the
+         * strike, which does not read at swing speed. Fixing it properly means an idle
+         * authored for a held axe, not a better number here. */
         [SerializeField]
         private Socket[] _sockets =
         {
@@ -58,7 +67,7 @@ namespace ChopChop.Player
                 Slot = ItemSlot.Axe,
                 Bone = HumanBodyBones.RightHand,
                 LocalPosition = new Vector3(0f, 0.073f, 0f),
-                LocalEuler = new Vector3(351f, 270f, 4f),
+                LocalEuler = new Vector3(351f, 270f, 34f),
                 Scale = 1f,
             },
         };
