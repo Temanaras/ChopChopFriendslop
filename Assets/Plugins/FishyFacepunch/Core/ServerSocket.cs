@@ -107,11 +107,35 @@ namespace FishyFacepunch.Server
                 _socket = default;
             }
 
+            /* LOCAL PATCH (ChopChop): socket creation throws when Steam's relay network is
+             * not ready, which is normal for a few seconds after the Steam client starts.
+             * Unpatched, that exception escapes all the way out of whatever asked for a
+             * server - a menu button, the bootstrap - and aborts it partway through.
+             *
+             * Multipass runs several transports and the others are fine, so a Steam socket
+             * that will not open should fail this transport and nothing else. Reporting
+             * Stopped is what makes that true: the state used to stay on Starting, which
+             * left the rest of this class believing in a socket that was never created. */
+            try
+            {
 #if UNITY_SERVER
-            _socket = SteamNetworkingSockets.CreateNormalSocket<FishySocketManager>(NetAddress.From(address, port));
+                _socket = SteamNetworkingSockets.CreateNormalSocket<FishySocketManager>(NetAddress.From(address, port));
 #else
-            _socket = SteamNetworkingSockets.CreateRelaySocket<FishySocketManager>();
+                _socket = SteamNetworkingSockets.CreateRelaySocket<FishySocketManager>();
 #endif
+            }
+            catch (System.Exception e)
+            {
+                _socket = default;
+                SteamNetworkingSockets.OnConnectionStatusChanged -= OnRemoteConnectionState;
+                Transport.NetworkManager.LogWarning(
+                    $"FishyFacepunch could not open a Steam socket ({e.Message}). " +
+                    "Continuing without Steam; other transports are unaffected.");
+
+                base.SetLocalConnectionState(LocalConnectionState.Stopped, true);
+                return false;
+            }
+
             _socket.ForwardMessage = OnMessageReceived;
 
             base.SetLocalConnectionState(LocalConnectionState.Started, true);

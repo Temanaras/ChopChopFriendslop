@@ -522,8 +522,8 @@ GameObject:
   - component: {fileID: 1939508643}
   - component: {fileID: 1939508642}
   - component: {fileID: 1939508641}
-  - component: {fileID: 1939508644}
   - component: {fileID: 1939508645}
+  - component: {fileID: 1939508646}
   m_Layer: 0
   m_Name: Bootstrap
   m_TagString: Untagged
@@ -549,6 +549,7 @@ MonoBehaviour:
   _connectIfPortTaken: 1
   _address: 127.0.0.1
   _port: 7770
+  _showStartScreen: 1
   _newWorldSeed: 1337
   _worldScene: Assets/Scenes/Clearing.unity
   _biomes: {fileID: 11400000, guid: 0c9bb25e5e4f62f49a07e404757cdf51, type: 2}
@@ -587,22 +588,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1939508644
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1939508640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7faf1e9e8a6dc574895bc52395304012, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ChopChop.UI::ChopChop.UI.ConnectMenu
-  _networkManager: {fileID: 1389942804}
-  _address: 127.0.0.1
-  _port: 7770
-  _showWhileServing: 0
 --- !u!114 &1939508645
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -617,6 +602,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: ChopChop.UI::ChopChop.UI.InteractionPrompt
   _key: E
   _screenHeight: 0.42
+--- !u!114 &1939508646
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1939508640}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e6f72a968537fb4aafea58f0b7f403c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ChopChop.UI::ChopChop.UI.StartScreen
+  _title: CHOPCHOP
+  _connectTimeoutSeconds: 10
 --- !u!1 &1982001871
 GameObject:
   m_ObjectHideFlags: 0

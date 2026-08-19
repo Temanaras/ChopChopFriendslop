@@ -19,7 +19,7 @@ namespace ChopChop.Bootstrap
     ///
     /// Put this on a single object in the boot scene alongside the NetworkManager.
     /// </summary>
-    public sealed class GameBootstrap : MonoBehaviour
+    public sealed class GameBootstrap : MonoBehaviour, ISessionLauncher
     {
         [Header("Scene references")]
         [SerializeField] private NetworkManager _networkManager;
@@ -39,6 +39,11 @@ namespace ChopChop.Bootstrap
         [Header("Address")]
         [SerializeField] private string _address = "127.0.0.1";
         [SerializeField] private ushort _port = 7770;
+
+        [Tooltip("Wait on the start screen instead of launching straight into a world. " +
+                 "Ignored when the command line already said what to do, and never shown " +
+                 "by a dedicated server, which has nobody to show it to.")]
+        [SerializeField] private bool _showStartScreen = true;
 
         [Header("World")]
         [Tooltip("Seed used when no save exists yet. Server-side only.")]
@@ -100,6 +105,7 @@ namespace ChopChop.Bootstrap
 
         private bool _hasColdStartInvite;
         private ulong _coldStartLobbyId;
+        private bool _launchedWithIntent;
 
         private void Awake()
         {
@@ -136,6 +142,10 @@ namespace ChopChop.Bootstrap
             ServiceLocator.Register(_router);
             ServiceLocator.Register(_lobby);
             ServiceLocator.Register(_session);
+
+            // Registered as the interface, not the concrete type: the menu is only allowed
+            // to know about the contract in Core, never about the bootstrap.
+            ServiceLocator.Register<ISessionLauncher>(this);
 
             if (_steam != null)
                 ServiceLocator.Register(_steam);
@@ -478,13 +488,22 @@ namespace ChopChop.Bootstrap
         {
             string[] args = System.Environment.GetCommandLineArgs();
 
-            Role = LaunchArguments.TryGetRole(args, out AppRole fromArgs) ? fromArgs : _defaultRole;
+            bool roleFromArgs = LaunchArguments.TryGetRole(args, out AppRole fromArgs);
+            Role = roleFromArgs ? fromArgs : _defaultRole;
 
-            if (LaunchArguments.TryGetConnect(args, _port, out string host, out ushort connectPort))
+            bool connectFromArgs = LaunchArguments.TryGetConnect(args, _port, out string host, out ushort connectPort);
+
+            if (connectFromArgs)
             {
                 _address = host;
                 _port = connectPort;
             }
+
+            /* The command line is an instruction, not a preference. Somebody who launched
+             * with -server or -connect has already answered the question the start screen
+             * asks, and stopping to ask it again would strand a scripted launch or a
+             * headless box at a menu nobody is watching. */
+            _launchedWithIntent = roleFromArgs || connectFromArgs;
 
             // An explicit -port always wins; -connect host:port only supplies a default.
             if (LaunchArguments.TryGetPort(args, out ushort explicitPort))
@@ -517,7 +536,70 @@ namespace ChopChop.Bootstrap
                 return;
             }
 
+            if (ShouldWaitOnStartScreen())
+            {
+                Debug.Log("[Bootstrap] Waiting on the start screen.");
+                _state.Set(AppState.Menu);
+                return;
+            }
+
             StartByRole();
+        }
+
+        /// <summary>
+        /// A dedicated server never waits: it has no screen and nobody to press a button.
+        /// Neither does a launch that already carried its instructions on the command
+        /// line, nor an invite accepted from Steam.
+        /// </summary>
+        private bool ShouldWaitOnStartScreen()
+            => _showStartScreen && Role.RunsClient() && !_launchedWithIntent;
+
+        // ---------------- ISessionLauncher ----------------
+
+        public string DefaultAddress => _address;
+
+        public void HostNewGame()
+        {
+            Role = AppRole.HostedServer;
+
+            /* StartServer rather than StartServerOrConnect. The fallback exists so several
+             * editor instances can launch identically and sort themselves out (TECH 15),
+             * but somebody who pressed "New Game" asked for their own world — silently
+             * joining a stranger's because a port was busy is the wrong answer to that. */
+            Debug.Log($"[Bootstrap] New game; serving on port {_port}.");
+            _state.Set(AppState.Connecting);
+            _session.StartServer(_port, true);
+        }
+
+        public void JoinGame(string address)
+        {
+            if (!string.IsNullOrWhiteSpace(address))
+                ApplyAddress(address.Trim());
+
+            Role = AppRole.Client;
+
+            Debug.Log($"[Bootstrap] Joining {_address}:{_port}.");
+            _state.Set(AppState.Connecting);
+            _session.ConnectClient(_address, _port);
+        }
+
+        /// <summary>
+        /// Accepts "host" or "host:port". Typing a port is the kind of thing people do
+        /// without being asked, and dropping it silently would connect them somewhere
+        /// they did not choose.
+        /// </summary>
+        private void ApplyAddress(string address)
+        {
+            int separator = address.LastIndexOf(':');
+
+            if (separator > 0 && ushort.TryParse(address[(separator + 1)..], out ushort typedPort))
+            {
+                _address = address[..separator];
+                _port = typedPort;
+                return;
+            }
+
+            _address = address;
         }
 
         private void StartByRole()
