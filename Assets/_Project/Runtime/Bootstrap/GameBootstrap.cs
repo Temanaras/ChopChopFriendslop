@@ -58,6 +58,11 @@ namespace ChopChop.Bootstrap
         [Tooltip("Enemy the director spawns. Leave empty to disable spawning entirely.")]
         [SerializeField] private FishNet.Object.NetworkObject _enemyPrefab;
 
+        [Header("Cabin")]
+        [Tooltip("The home cabin, spawned at the world origin. Everything inside it comes " +
+                 "along with it, so adding fixtures is a change to this prefab alone.")]
+        [SerializeField] private GameObject _cabinPrefab;
+
         [Header("Items")]
         [Tooltip("Every item in the game. Validated at boot; duplicate or missing ids " +
                  "are refused rather than allowed to corrupt saves.")]
@@ -312,15 +317,7 @@ namespace ChopChop.Bootstrap
         {
             _networkManager.SceneManager.OnLoadEnd -= HandleWorldSceneLoaded;
             SpawnTargetDummies();
-
-            /* The chest lives in the world scene, so it can only be wired once that scene
-             * has arrived. It needs a way to reach a player's carried container, which is
-             * supplied here because the Cabin assembly deliberately knows nothing about
-             * players. */
-            ChopChop.Cabin.CabinChest chest = FindObjectOfType<ChopChop.Cabin.CabinChest>();
-
-            if (chest != null)
-                chest.InventoryProvider = InventoryFor;
+            SpawnCabin();
 
             /* The director needs the density field, and the density field needs a chunk
              * store, so it can only exist once the world is up. Enemy positions are never
@@ -329,6 +326,36 @@ namespace ChopChop.Bootstrap
                 _networkManager, _enemyPrefab, new DensityField(_serverChunks), _biomes);
 
             ServiceLocator.Register(_director);
+        }
+
+        /// <summary>
+        /// Raises the cabin at the world origin, which the clearing mask keeps free of
+        /// trees (TECH 5.7).
+        ///
+        /// Spawned rather than authored into the scene so there is one prefab to edit and
+        /// one place that decides where it stands. It has to happen here rather than at
+        /// boot for the same reason the target dummies do: loading the world scene
+        /// replaces every scene, and anything spawned before that goes with them.
+        ///
+        /// This is the only line the bootstrap will ever need about the cabin. What is
+        /// inside it is the prefab's business, and the fixtures bind themselves through
+        /// the context below.
+        /// </summary>
+        private void SpawnCabin()
+        {
+            if (_cabinPrefab == null)
+            {
+                Debug.LogWarning("[Cabin] No cabin prefab assigned; the clearing will be empty.");
+                return;
+            }
+
+            GameObject instance = Instantiate(_cabinPrefab, Vector3.zero, Quaternion.identity);
+            _networkManager.ServerManager.Spawn(instance);
+
+            if (instance.TryGetComponent(out ChopChop.Cabin.CabinBuilding cabin))
+                cabin.Bind(new ChopChop.Cabin.CabinContext(InventoryFor));
+            else
+                Debug.LogError("[Cabin] The cabin prefab has no CabinBuilding; nothing inside it will be wired.");
         }
 
         /// <summary>

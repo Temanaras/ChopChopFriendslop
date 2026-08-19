@@ -553,6 +553,7 @@ MonoBehaviour:
   _biomes: {fileID: 11400000, guid: 0c9bb25e5e4f62f49a07e404757cdf51, type: 2}
   _targetDummy: {fileID: 5015332149634169184, guid: 719926bb839e5fd4fbd834db55b1ca41, type: 3}
   _enemyPrefab: {fileID: 2366131230583254145, guid: ffefec5565cac8448af3637354c1c23f, type: 3}
+  _cabinPrefab: {fileID: 156516930394246729, guid: 313bc387fa1f07e4f9947f5666967b3a, type: 3}
   _items: {fileID: 11400000, guid: 4e905f10819ad124c9231fa97868439e, type: 2}
   _startingAxe: {fileID: 11400000, guid: e71f78fac3265164fab0e22ef49d253e, type: 2}
 --- !u!114 &1939508642

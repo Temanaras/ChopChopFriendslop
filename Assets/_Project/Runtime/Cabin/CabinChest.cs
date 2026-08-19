@@ -18,7 +18,7 @@ namespace ChopChop.Cabin
     /// transfers are not latency-sensitive and guessing at them creates desync bugs for
     /// no benefit (TECH 4.3). A client asks; the server checks its own state and answers.
     /// </summary>
-    public sealed class CabinChest : NetworkBehaviour
+    public sealed class CabinChest : NetworkBehaviour, ICabinFixture
     {
         [Tooltip("How close a player must be to reach the chest.")]
         [SerializeField] private float _useRange = 4f;
@@ -33,10 +33,12 @@ namespace ChopChop.Cabin
         private CabinStorage _storage;
 
         /// <summary>
-        /// Supplies a connection's carried container. Injected at boot so this assembly
-        /// does not need to know what a player is.
+        /// Supplied by <see cref="CabinBuilding"/> at boot, so this assembly does not need
+        /// to know what a player is.
         /// </summary>
-        public Func<NetworkConnection, ItemContainer> InventoryProvider { get; set; }
+        private CabinContext _context;
+
+        void ICabinFixture.Bind(CabinContext context) => _context = context;
 
         /// <summary>Raised on clients whenever the contents change, for the UI to redraw.</summary>
         public event Action ContentsChanged;
@@ -94,7 +96,7 @@ namespace ChopChop.Cabin
             if (!CanReach(sender))
                 return;
 
-            ItemContainer inventory = InventoryProvider?.Invoke(sender);
+            ItemContainer inventory = _context?.InventoryOf(sender);
 
             if (inventory == null)
                 return;
@@ -111,7 +113,7 @@ namespace ChopChop.Cabin
             if (!CanReach(sender))
                 return;
 
-            ItemContainer inventory = InventoryProvider?.Invoke(sender);
+            ItemContainer inventory = _context?.InventoryOf(sender);
 
             if (inventory == null)
                 return;
