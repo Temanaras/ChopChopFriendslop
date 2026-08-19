@@ -264,6 +264,19 @@ namespace FishyFacepunch.Server
             if (base.GetLocalConnectionState() == LocalConnectionState.Stopped || base.GetLocalConnectionState() == LocalConnectionState.Stopping)
                 return;
 
+            /* LOCAL PATCH (ChopChop): _socket is null when CreateRelaySocket threw, which
+             * happens when Steam's relay network is not ready yet - commonly for a few
+             * seconds after the client starts. StartConnection leaves the state on
+             * Starting in that case, which is neither Stopped nor Stopping, so this used
+             * to fall through and dereference a null socket every single frame.
+             *
+             * That is not a quiet failure: the exception aborts the server's iteration
+             * before it finishes the connection handshake, so NOBODY can connect - not
+             * even over Tugboat, which has nothing to do with Steam. Guarding here
+             * degrades a dead session into a working one without Steam sockets. */
+            if (_socket == null)
+                return;
+
             //Iterate local client packets first.
             while (_clientHostIncoming.Count > 0)
             {

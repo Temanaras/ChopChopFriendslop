@@ -41,7 +41,13 @@ namespace ChopChop.World
         /// Draws every loaded chunk for this frame. Immediate mode: nothing persists
         /// between frames, so a chunk that stops being resident simply stops being drawn.
         /// </summary>
-        public void Render(IEnumerable<ChunkData> chunks, Camera camera)
+        /// <param name="diffs">
+        /// Consulted so felled trees are not drawn. Generation is pure and never forgets
+        /// a tree (TECH 2.6), so the diff store is the only thing that knows a tree is
+        /// gone — without this a chopped tree keeps standing, visible and intangible,
+        /// because the collider band checks the diffs and this did not.
+        /// </param>
+        public void Render(IEnumerable<ChunkData> chunks, TreeDiffStore diffs, Camera camera)
         {
             foreach (List<Matrix4x4> list in _bySpecies.Values)
                 list.Clear();
@@ -52,9 +58,13 @@ namespace ChopChop.World
             foreach (ChunkData chunk in chunks)
             {
                 Vector3 origin = chunk.Origin;
+                long chunkKey = chunk.Key;
 
                 for (int i = 0; i < chunk.Trees.Length; i++)
                 {
+                    if (diffs != null && diffs.IsFelled(chunkKey, (ushort)i))
+                        continue;
+
                     GeneratedTree tree = chunk.Trees[i];
                     Vector3 world = origin + tree.LocalPosition;
 

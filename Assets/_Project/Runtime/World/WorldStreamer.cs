@@ -172,7 +172,7 @@ namespace ChopChop.World
             _colliders.Update(_store.Loaded, _centres, _diffs);
 
             if (_renders)
-                _renderer.Render(_store.Loaded, null);
+                _renderer.Render(_store.Loaded, _diffs, null);
         }
 
         /// <summary>

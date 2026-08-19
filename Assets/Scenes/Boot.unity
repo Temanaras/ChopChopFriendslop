@@ -557,6 +557,8 @@ MonoBehaviour:
   _cabinPrefab: {fileID: 156516930394246729, guid: 313bc387fa1f07e4f9947f5666967b3a, type: 3}
   _items: {fileID: 11400000, guid: 4e905f10819ad124c9231fa97868439e, type: 2}
   _startingAxe: {fileID: 11400000, guid: e71f78fac3265164fab0e22ef49d253e, type: 2}
+  _wood: {fileID: 11400000, guid: 962518c8dd95c5041a7eef559e1bfc5b, type: 2}
+  _droppedItem: {fileID: 7093028742641296660, guid: 8cb5f7311ec03a540995672a5578171a, type: 3}
 --- !u!114 &1939508642
 MonoBehaviour:
   m_ObjectHideFlags: 0

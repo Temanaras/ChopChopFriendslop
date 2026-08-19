@@ -71,6 +71,12 @@ namespace ChopChop.Bootstrap
         [Tooltip("Given to a player the first time they spawn, so the axe gate can be felt.")]
         [SerializeField] private ChopChop.Items.ItemDefinition _startingAxe;
 
+        [Tooltip("What a felled tree drops.")]
+        [SerializeField] private ChopChop.Items.ItemDefinition _wood;
+
+        [Tooltip("Prefab for a stack of something lying on the ground.")]
+        [SerializeField] private GameObject _droppedItem;
+
         /// <summary>Resolved once at boot; the command line wins over the inspector.</summary>
         public AppRole Role { get; private set; }
 
@@ -82,6 +88,7 @@ namespace ChopChop.Bootstrap
 
         private TreeDiffStore _diffs;
         private TreeServer _treeServer;
+        private LootService _loot;
         private TreeClient _treeClient;
         private ChunkStore _serverChunks;
         private RegrowthService _regrowth;
@@ -222,6 +229,22 @@ namespace ChopChop.Bootstrap
             };
 
             ServiceLocator.Register(_treeServer);
+
+            /* Closes the loop: a felled tree becomes wood on the ground, which becomes
+             * wood in a backpack, which becomes wood in the chest. Registered before
+             * anything can fell a tree, because loot with no service behind it would
+             * simply never appear and would look like a broken drop rate. */
+            _loot = new LootService(_networkManager, _droppedItem)
+            {
+                InventoryProvider = InventoryFor,
+                WoodItemId = _wood != null ? _wood.Id : (ushort)0,
+            };
+
+            _loot.Attach(_treeServer);
+            ServiceLocator.Register(_loot);
+
+            if (_wood == null)
+                Debug.LogWarning("[Loot] No wood item assigned; felled trees will drop nothing.");
 
             _storage = new ChopChop.Cabin.CabinStorage(_world.World.Cabin, _items);
             ServiceLocator.Register(_storage);
@@ -570,6 +593,7 @@ namespace ChopChop.Bootstrap
             // do that while the session is still up rather than during teardown.
             _director?.Dispose();
             _weapons?.Dispose();
+            _loot?.Dispose();
             _treeServer?.Dispose();
             _treeClient?.Dispose();
             _world?.Dispose();
