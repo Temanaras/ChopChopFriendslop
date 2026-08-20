@@ -35,5 +35,23 @@ namespace ChopChop.Core
 
         public static bool RunsClient(this AppRole role)
             => role == AppRole.Client || role == AppRole.HostedServer;
+
+        /// <summary>
+        /// Whether to stop at a menu, or launch straight into a session.
+        ///
+        /// Lives here rather than in the bootstrap because it is a statement about what
+        /// a role means, and because the failure it guards against is invisible: a
+        /// dedicated server waiting forever at a screen nobody is watching looks like a
+        /// hang, not a bug. Nothing else in the boot path is allowed to reference the
+        /// composition root, so this is also the only place a test can reach it.
+        /// </summary>
+        /// <param name="enabled">Whether this build shows a start screen at all.</param>
+        /// <param name="launchedWithIntent">
+        /// Whether the command line already answered the question the menu asks —
+        /// <c>-server</c> or <c>-connect</c>. A cold-start Steam invite is handled
+        /// earlier still, because it outranks the configured role entirely (TECH 8.1).
+        /// </param>
+        public static bool WaitsOnStartScreen(this AppRole role, bool enabled, bool launchedWithIntent)
+            => enabled && role.RunsClient() && !launchedWithIntent;
     }
 }

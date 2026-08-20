@@ -35,6 +35,21 @@ that way.
 rather than installed as packages. They have no version and no update path, and
 edits to them are edits to the project. Treat them as source you own.
 
+**Local patches carried against FishyFacepunch.** Both are in
+`Assets/Plugins/FishyFacepunch/Core/ServerSocket.cs`, marked `LOCAL PATCH (ChopChop)`:
+
+1. `CreateRelaySocket` throws while Steam's relay network is still warming up. The
+   exception escaped through every attempt to start a server, so pressing "New Game"
+   raised it whenever Steam was cold. Now caught: the transport reports failure, stops,
+   and Multipass carries on with Tugboat.
+2. `IterateIncoming` dereferenced a null `_socket` after that throw, every frame. Worse
+   than noise — the exception aborted the server's iteration *before the handshake*, so
+   **nobody could connect, even over Tugboat**.
+
+Two patches in one vendored file is the point to decide: fork it properly and pin the
+fork, or accept these are carried silently forever. Until that call is made, anyone
+editing this file needs to know they are not looking at upstream.
+
 FishNet uses an IL post-processor that injects networking logic at compile time
 rather than using runtime reflection. Consequence: RPC and SyncType changes
 require a full recompile to take effect, and codegen errors surface as build
@@ -140,6 +155,10 @@ compile error. Enforce these rules:
 - `World` must not depend on `AI` or `Combat`.
 - `Persistence` depends on everything's data types but nothing depends on
   `Persistence` except `Core` and `Networking`.
+- `UI` may depend on `Player`, `Cabin`, `World` and `Items`, but **never** on
+  `Bootstrap`. Everything depends on the composition root, so nothing may depend on it
+  back. When the UI needs something only the bootstrap can do, the contract goes in
+  `Core` and the bootstrap registers itself as it — see `ISessionLauncher` (§8.1).
 
 ---
 
@@ -350,6 +369,28 @@ The cabin clearing is an authored scene, additively loaded. The generator takes 
 band where density interpolates from zero to the biome's base value so the
 authored edge blends outward rather than ending in a visible circle.
 
+### 5.8 Ground loot
+
+`LootService` listens for `TreeServer.TreeFelled` and spawns a `DroppedItem` above the
+stump. Server-only: loot exists because the server said a tree fell, and a client that
+believes otherwise simply sees nothing.
+
+**Spawn first, then set contents.** A `SyncVar` written on an object that is not yet
+spawned has no observers and no dirty tracking to record it, so the write can be lost
+and the client is told a pile of nothing:
+
+```csharp
+_networkManager.ServerManager.Spawn(instance);
+if (instance.TryGetComponent(out DroppedItem dropped))
+    dropped.SetContents(itemId, count);      // after Spawn, never before
+```
+
+The cost is that the stack is empty for part of a frame between the two calls, which is
+why `IsAvailable` returns false at zero rather than offering an empty prompt.
+
+Which item a tree drops is data (`WoodItemId`, `WoodPerTree`), not a constant, so a
+different biome can drop something else without touching this.
+
 ---
 
 ## 6. Persistence
@@ -523,9 +564,37 @@ Two things to feel for once there is real play:
 ### 8.1 Connection flow
 
 **By address (current).** The server listens on Tugboat. Clients connect to
-`host:port`, from the connect menu or with `-connect <host[:port]>`. A
+`host:port`, from the start screen or with `-connect <host[:port]>`. A
 `HostedServer` starts its server and then connects its own client over the
 loopback, exactly as a remote client would.
+
+The menu cannot call the bootstrap directly (§3), so `Core/ISessionLauncher.cs` declares
+what a menu is allowed to ask for — `DefaultAddress`, `HostNewGame()`,
+`JoinGame(address)` — and `GameBootstrap` registers itself as the interface. This keeps
+the port, the address and the role in one place; a menu holding its own copy would drift
+the first time either moved.
+
+**"New Game" uses `StartServer`, not `StartServerOrConnect`.** The port-taken fallback
+exists so several editor instances can launch identically and sort themselves out (§15),
+but somebody who pressed New Game asked for *their own world* — silently joining a
+stranger's because a port was busy is the wrong answer to that. Local multi-instance
+testing goes through Join instead, which is more explicit anyway.
+
+**What waits, and what does not.** `AppRole.WaitsOnStartScreen` decides, and it is a
+pure function so it can be tested without standing up a bootstrap. A dedicated server
+never waits — it has no screen and nobody to press a button. Neither does a launch that
+already carried its instructions (`-server`, `-connect`), nor a cold-start Steam invite,
+which outranks the configured role entirely. **A headless server stuck at a menu does
+not error; it simply never appears.** That is why this is pinned by tests *and* by the
+headless run in §15.
+
+**The client's arrival is a separate event.** The server sets `AppState.InGame` on the
+line after it asks for the world scene. A client has no equivalent moment — it connects,
+waits, and is handed a scene — so `GameBootstrap.HandleWorldArrived` watches
+`SceneManager.OnLoadEnd` and advances the state when the world scene name appears in
+`LoadedScenes`. Without it a connected client sits in `Connecting` forever and the start
+screen keeps drawing "No answer." over a game that is running perfectly. This is
+invisible in the editor, where normal play is a `HostedServer` and takes the line above.
 
 **By Steam invite (not yet).** The lobby layer exists (`LobbyService`, §8.1 flow
 below) but cannot serve a headless server, because **FishyFacepunch only ever
@@ -678,6 +747,43 @@ inventory. All transfers are `ServerRpc` round trips with server-side validation
 of both source and destination. Assume concurrent access — two players will grab
 the same stack simultaneously on day one. Validate against current server state,
 not against what the client thinks it saw.
+
+### 9.5 Interaction
+
+`IInteractable` lives in `Core` and deliberately names no networking type: an
+interactable is a thing with a prompt and a response, and whether it replicates is its
+own business. Implementations register with the static `Interactables` list, so finding
+a candidate is a walk over a small set rather than a physics query per frame.
+
+`PlayerInteractor` scores candidates by blending closeness against how directly the
+player is facing them (`Mathf.Lerp(closeness, facing, _aimBias)`), and measures reach
+from the **tool origin**, not the camera — otherwise a third-person camera 3m behind
+the player reaches through walls the player is standing against.
+
+`Campfire` is the first implementer: a `NetworkBehaviour` with a `SyncVar<bool>` for lit
+state and a `[ServerRpc(RequireOwnership = false)]` to toggle it. It is deliberately
+**not** an `ICabinFixture` — it needs no storage and no container, and making
+everything in the cabin a fixture would make the seam meaningless.
+
+### 9.6 The cabin, and how fixtures attach
+
+The cabin is a prefab spawned at the world origin (which the clearing mask keeps clear,
+§5.7), not authored into the scene: one prefab to edit, one place that decides where it
+stands. It must be spawned *after* the world scene loads, because loading that scene
+replaces every scene and anything spawned earlier goes with them.
+
+Fixtures bind themselves rather than being wired up by the bootstrap:
+
+- `CabinContext` carries what a fixture might need — currently a
+  `Func<NetworkConnection, ItemContainer>` reaching a player's carried inventory.
+- `ICabinFixture.Bind(CabinContext)` is implemented by anything inside the cabin that
+  needs it.
+- `CabinBuilding.Bind` collects them with `GetComponentsInChildren(true, …)` —
+  inactive children **included**, on purpose, so a fixture that starts switched off
+  still binds.
+
+The point is that adding a fixture means adding a component to the prefab, and nothing
+else. The bootstrap has exactly one line about the cabin and should never need a second.
 
 ---
 
@@ -908,6 +1014,8 @@ Host migration is not deferred — it is gone. See §8.2.
 
 If the loop isn't fun in grey-box, more rings will not fix it.
 
+What has shipped since, and what is still owed, is in §18.
+
 ---
 
 ## 17. Notes for Claude Code
@@ -937,3 +1045,73 @@ If the loop isn't fun in grey-box, more rings will not fix it.
   `https://fish-networking.gitbook.io/docs` rather than trusting samples or
   memory — the v3 → v4 API break is significant and widely mis-documented in
   tutorials.
+
+---
+
+## 18. Where the build actually is
+
+Milestone 1's list (§16) says what was *built*. This says what you would actually see if
+you pressed Play today, and what is knowingly unfinished. Keep it current — it is the
+first thing worth reading after §2.
+
+### 18.1 Visual placeholders
+
+- **Trees are brown cylinders.** 0.75m diameter, 30m tall, 12 sides, pivot at the base,
+  regenerated from the editor menu `ChopChop/Regenerate Placeholder Trunk`. The imported
+  acacia pack was deleted: the target is an old-growth Oregon forest, and savannah trees
+  were actively misleading about how density reads. Regenerating **discards hand edits**
+  to the mesh asset, so treat the generator as the source of truth.
+- **Placement grid is 16x16 per chunk** (was 8x8), jittered 0.7 of a cell about the cell
+  centre. Darkness normalises against a *derived* reference rather than a fixed constant,
+  so the darkest cells stay dark as density is tuned. This placement grid is **not** the
+  density grid of §12.1, which is still one float per 4m cell — they are different grids
+  and changing one does not move the other.
+- **The clearing is radius 30 with a 12.5m ramp**, halved from its original size.
+- **The player carries a rigged axe**, socketed to the right hand, blade rolled 30
+  degrees. That is a compromise, not a solution: the rest pose and the strike pose want
+  rolls about 30 degrees apart, and no fixed value satisfies both. It reads correctly at
+  rest, which is what you see most.
+
+### 18.2 UI — read this before building one
+
+Three things that will otherwise be discovered by compile error or by surprise:
+
+1. **`UI` must not reference `Bootstrap`** (§3). When the UI needs something only the
+   composition root can do, put the contract in `Core` and have the bootstrap register
+   itself as it. `ISessionLauncher` is the worked example; copy that shape.
+2. **IMGUI is the deliberate placeholder idiom**, not an accident. `OnGUI` is cheap to
+   write and, more importantly, cheap to *delete* — these screens exist to be replaced
+   wholesale. There are exactly two in the entire runtime: `StartScreen` and
+   `InteractionPrompt`.
+3. **There is no HUD at all.** No health, no inventory, no chest view, no wood count.
+   The loop is closed in code and almost entirely invisible: you can chop a tree, watch
+   it fall, collect the wood and stow it in the chest without the game ever telling you
+   any of that happened.
+
+The binding surface already exists and was built for exactly this. `ItemContainer`
+raises `Changed` whenever any slot moves, so a view can refresh without polling;
+`Health`, `PlayerPaperdoll` and `CabinChest` are the other read points. Prefer observing
+those to reaching into the bootstrap.
+
+### 18.3 Open debts
+
+Known, deliberate, and unfixed. Roughly in order of what a stranger would hit first:
+
+- **The first frame of a joined game is a brown wall.** The default spawn sits inside
+  the cabin, and the 3m third-person boom pushes the camera through the -Z wall — a
+  client spawning at (2, 0.1, -2) ends up 0.75m from `Wall -Z` staring at it. The boom
+  needs a spherecast that pulls in on obstruction; until then, indoors is unusable and
+  it is the *first* thing anyone sees.
+- **Sprint outruns its animation.** Sprint is 8.5 m/s; the locomotion blend tree tops out
+  at 5. The legs simply stop keeping up.
+- **Two vendored FishyFacepunch patches with no update path** (§1). Fork and pin, or
+  accept them permanently — but decide before a third arrives.
+- **`WorldStreamer.LastInstances` double-counts**, once per submesh, so the number
+  reported for tree instances is not the number of trees.
+- **`TreeColliderBand` hardcodes a 0.4m capsule radius** regardless of species, so
+  collision will diverge from the visual the moment trunks vary.
+- **`PlaceholderTrunk` regeneration discards hand edits** (§18.1).
+- **The determinism test has no CI to run in** (§16). It is written and passes locally,
+  which is not the same as being enforced.
+- **`.git` is ~113MB**, mostly the deleted acacia pack still in history. Harmless until
+  somebody clones it on a bad connection.

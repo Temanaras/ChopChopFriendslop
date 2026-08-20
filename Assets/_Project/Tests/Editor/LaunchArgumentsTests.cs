@@ -162,4 +162,44 @@ namespace ChopChop.Tests.Editor
             Assert.IsTrue(AppRole.HostedServer.RunsClient());
         }
     }
+
+    /// <summary>
+    /// The start screen must not swallow a launch that already knew what it wanted.
+    ///
+    /// Worth pinning because the failure is silent in the worst possible place: a
+    /// headless server that stops at a menu does not error, it just never appears, and
+    /// the only symptom is that nobody can connect (TECH 15).
+    /// </summary>
+    public sealed class StartScreenGateTests
+    {
+        [Test]
+        public void DedicatedServerNeverWaits()
+        {
+            Assert.IsFalse(AppRole.Server.WaitsOnStartScreen(enabled: true, launchedWithIntent: false),
+                "a dedicated server has no screen and nobody to press a button");
+        }
+
+        [Test]
+        public void CommandLineIntentSkipsTheMenu()
+        {
+            Assert.IsFalse(AppRole.Client.WaitsOnStartScreen(enabled: true, launchedWithIntent: true),
+                "-connect already answered the question the menu asks");
+
+            Assert.IsFalse(AppRole.HostedServer.WaitsOnStartScreen(enabled: true, launchedWithIntent: true));
+        }
+
+        [Test]
+        public void APlainLaunchWaits()
+        {
+            Assert.IsTrue(AppRole.Client.WaitsOnStartScreen(enabled: true, launchedWithIntent: false));
+            Assert.IsTrue(AppRole.HostedServer.WaitsOnStartScreen(enabled: true, launchedWithIntent: false));
+        }
+
+        [Test]
+        public void DisablingTheScreenBeatsEverything()
+        {
+            Assert.IsFalse(AppRole.Client.WaitsOnStartScreen(enabled: false, launchedWithIntent: false));
+            Assert.IsFalse(AppRole.HostedServer.WaitsOnStartScreen(enabled: false, launchedWithIntent: false));
+        }
+    }
 }

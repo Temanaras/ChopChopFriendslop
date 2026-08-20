@@ -147,6 +147,10 @@ namespace ChopChop.Bootstrap
             // to know about the contract in Core, never about the bootstrap.
             ServiceLocator.Register<ISessionLauncher>(this);
 
+            /* Subscribed for every role, not just the server. A client has no other way to
+             * learn it has arrived — see HandleWorldArrived. */
+            _networkManager.SceneManager.OnLoadEnd += HandleWorldArrived;
+
             if (_steam != null)
                 ServiceLocator.Register(_steam);
 
@@ -344,6 +348,34 @@ namespace ChopChop.Bootstrap
              * dropped in the chest for whoever needs it next (TECH 2.3). */
             if (_startingAxe != null && !paperdoll.HasEquipped(ChopChop.Items.ItemSlot.Axe))
                 paperdoll.TryEquip(new ChopChop.Items.ItemStack(_startingAxe.Id, 1), out _);
+        }
+
+        /// <summary>
+        /// A client is in the game when the world arrives, not when the socket opens.
+        ///
+        /// The server sets <see cref="AppState.InGame"/> itself, on the line after it asks
+        /// for the world scene. A client has no equivalent moment: it connects, waits, and
+        /// is handed a scene — so without this it stays in <see cref="AppState.Connecting"/>
+        /// forever, and the start screen keeps drawing "No answer." over a game that is
+        /// running perfectly. Invisible in the editor, where normal play is a hosted server
+        /// and takes the line above; only the headless test in TECH 15 shows it.
+        /// </summary>
+        private void HandleWorldArrived(SceneLoadEndEventArgs args)
+        {
+            if (!Role.RunsClient() || args.LoadedScenes == null)
+                return;
+
+            string world = System.IO.Path.GetFileNameWithoutExtension(_worldScene);
+
+            for (int i = 0; i < args.LoadedScenes.Length; i++)
+            {
+                if (args.LoadedScenes[i].name != world)
+                    continue;
+
+                _networkManager.SceneManager.OnLoadEnd -= HandleWorldArrived;
+                _state.Set(AppState.InGame);
+                return;
+            }
         }
 
         private void HandleWorldSceneLoaded(SceneLoadEndEventArgs args)
@@ -549,10 +581,13 @@ namespace ChopChop.Bootstrap
         /// <summary>
         /// A dedicated server never waits: it has no screen and nobody to press a button.
         /// Neither does a launch that already carried its instructions on the command
-        /// line, nor an invite accepted from Steam.
+        /// line, nor an invite accepted from Steam (handled earlier, in Start).
+        ///
+        /// The decision itself lives on <see cref="AppRole"/> so it can be tested without
+        /// standing up a bootstrap.
         /// </summary>
         private bool ShouldWaitOnStartScreen()
-            => _showStartScreen && Role.RunsClient() && !_launchedWithIntent;
+            => Role.WaitsOnStartScreen(_showStartScreen, _launchedWithIntent);
 
         // ---------------- ISessionLauncher ----------------
 
@@ -669,7 +704,10 @@ namespace ChopChop.Bootstrap
                 _networkManager.TimeManager.OnTick -= _world.AdvanceTick;
 
             if (_networkManager != null)
+            {
                 _networkManager.ServerManager.OnRemoteConnectionState -= HandleClientForItems;
+                _networkManager.SceneManager.OnLoadEnd -= HandleWorldArrived;
+            }
 
             // Order matters: the world writes a final snapshot on dispose, and it should
             // do that while the session is still up rather than during teardown.
