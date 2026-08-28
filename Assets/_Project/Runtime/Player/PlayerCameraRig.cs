@@ -1,3 +1,4 @@
+using ChopChop.Core;
 using ChopChop.World;
 using FishNet.Object;
 using UnityEngine;
@@ -79,7 +80,12 @@ namespace ChopChop.Player
              * lurch from world north to whatever the spawn happened to choose. */
             Yaw = transform.eulerAngles.y;
             ApplyRotation();
-            SetCursorCaptured(true);
+
+            /* The cursor belongs to whichever screen is open, not to this component.
+             * Owning it here and handing it over on request keeps one writer, so a
+             * panel closing cannot leave the pointer stranded over a captured game. */
+            UiFocus.Changed += ApplyCursor;
+            ApplyCursor();
 
             /* The forest streams around whoever is playing here. Found rather than
              * injected because the streamer lives in the world scene and the player is
@@ -99,7 +105,10 @@ namespace ChopChop.Player
             base.OnStopClient();
 
             if (_owns)
+            {
+                UiFocus.Changed -= ApplyCursor;
                 SetCursorCaptured(false);
+            }
 
             _owns = false;
         }
@@ -135,6 +144,8 @@ namespace ChopChop.Player
             if (_pivot != null)
                 _pivot.rotation = Quaternion.Euler(Pitch, Yaw, 0f);
         }
+
+        private void ApplyCursor() => SetCursorCaptured(!UiFocus.WantsCursor);
 
         private void SetCursorCaptured(bool captured)
         {

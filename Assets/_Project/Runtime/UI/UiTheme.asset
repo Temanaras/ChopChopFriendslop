@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81176ce997d9f6b46a5277a4ea6cae1d, type: 3}
+  m_Name: UiTheme
+  m_EditorClassIdentifier: ChopChop.UI::ChopChop.UI.UiTheme
+  Panel: {r: 0.06, g: 0.06, b: 0.07, a: 0.94}
+  PanelHeader: {r: 0.1, g: 0.1, b: 0.12, a: 1}
+  Slot: {r: 0.14, g: 0.14, b: 0.16, a: 1}
+  SlotHover: {r: 0.22, g: 0.22, b: 0.25, a: 1}
+  SlotAccepting: {r: 0.2, g: 0.34, b: 0.22, a: 1}
+  SlotRefusing: {r: 0.36, g: 0.16, b: 0.16, a: 1}
+  Text: {r: 0.92, g: 0.91, b: 0.88, a: 1}
+  TextDim: {r: 0.62, g: 0.61, b: 0.58, a: 1}
+  Font: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  Health: {r: 0.72, g: 0.22, b: 0.2, a: 1}
+  HealthBacking: {r: 0.16, g: 0.08, b: 0.08, a: 0.85}
+  Ammo: {r: 0.85, g: 0.76, b: 0.48, a: 1}
+  Perfect: {r: 0.35, g: 0.82, b: 0.4, a: 1}
+  Good: {r: 0.94, g: 0.83, b: 0.35, a: 1}
+  Bad: {r: 0.55, g: 0.5, b: 0.42, a: 1}
+  Miss: {r: 0.3, g: 0.14, b: 0.14, a: 1}
+  Tiers:
+  - {r: 0.62, g: 0.61, b: 0.58, a: 1}
+  - {r: 0.55, g: 0.72, b: 0.6, a: 1}
+  - {r: 0.5, g: 0.64, b: 0.82, a: 1}
+  - {r: 0.72, g: 0.55, b: 0.82, a: 1}

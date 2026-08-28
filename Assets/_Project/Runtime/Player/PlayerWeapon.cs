@@ -83,6 +83,10 @@ namespace ChopChop.Player
             if (!IsOwner || _fire == null)
                 return;
 
+            // Reads the Input System directly; see the same guard in PlayerChopper.
+            if (Core.UiFocus.GameplayBlocked)
+                return;
+
             // Shares the primary button with the axe; only the held tool acts.
             if (_loadout != null && !_loadout.IsHolding(PlayerLoadout.Tool.Gun))
                 return;

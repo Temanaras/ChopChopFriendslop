@@ -165,6 +165,147 @@ namespace ChopChop.Items
             return false;
         }
 
+        /// <summary>
+        /// Moves one slot onto another: merges if they stack, swaps otherwise.
+        ///
+        /// This is what a drag actually is, and it did not exist — the closest the
+        /// container offered was <see cref="TakeSlot"/> followed by
+        /// <see cref="SetSlot"/>, which is two <see cref="Changed"/> events and a moment
+        /// in between where the dragged stack exists nowhere. A view refreshing on the
+        /// first of those draws an inventory that has lost an item.
+        ///
+        /// Partial merges leave the remainder behind rather than failing, so dropping 40
+        /// wood onto a stack of 50 with a cap of 64 moves 14 and keeps 26 in hand — which
+        /// is what a player dragging it expects to see.
+        /// </summary>
+        /// <returns>False if either index is out of range, or nothing moved.</returns>
+        public bool Move(int from, int to)
+        {
+            if (from == to)
+                return false;
+
+            if (from < 0 || from >= _slots.Length || to < 0 || to >= _slots.Length)
+                return false;
+
+            ItemStack source = _slots[from];
+
+            if (source.IsEmpty)
+                return false;
+
+            ItemStack destination = _slots[to];
+            bool sameItem = !destination.IsEmpty
+                            && destination.ItemId == source.ItemId
+                            && destination.Durability == source.Durability;
+
+            if (sameItem)
+            {
+                ushort maxStack = _registry != null ? _registry.MaxStackOf(source.ItemId) : (ushort)1;
+
+                if (destination.Count >= maxStack)
+                    return Swap(from, to);
+
+                ushort moved = Math.Min((ushort)(maxStack - destination.Count), source.Count);
+
+                destination.Count += moved;
+                source.Count -= moved;
+
+                _slots[to] = destination;
+                _slots[from] = source.Count == 0 ? ItemStack.Empty : source;
+
+                Changed?.Invoke();
+                return true;
+            }
+
+            /* Different items, or the same item at different durability — which is a
+             * different item as far as a player is concerned, and merging them would
+             * quietly destroy the wear on one of them. */
+            return Swap(from, to);
+        }
+
+        /// <summary>
+        /// The same move, but across two containers — a drag between the backpack and the
+        /// chest.
+        ///
+        /// Written as one operation rather than take-then-add for the reason
+        /// <see cref="Move"/> is: the halfway state has the stack in neither container,
+        /// and both of them push to clients on change. A player watching the chest would
+        /// see the item blink out of existence before arriving.
+        ///
+        /// Static because it belongs to neither container. Both are re-read here, on the
+        /// server, rather than trusted from whoever asked (TECH 9.4).
+        /// </summary>
+        /// <returns>False if nothing moved: bad index, empty source, or a full destination.</returns>
+        public static bool MoveBetween(ItemContainer from, int fromSlot, ItemContainer to, int toSlot)
+        {
+            if (from == null || to == null)
+                return false;
+
+            if (ReferenceEquals(from, to))
+                return from.Move(fromSlot, toSlot);
+
+            if (fromSlot < 0 || fromSlot >= from._slots.Length || toSlot < 0 || toSlot >= to._slots.Length)
+                return false;
+
+            ItemStack source = from._slots[fromSlot];
+
+            if (source.IsEmpty)
+                return false;
+
+            ItemStack destination = to._slots[toSlot];
+
+            if (!destination.IsEmpty
+                && destination.ItemId == source.ItemId
+                && destination.Durability == source.Durability)
+            {
+                ushort maxStack = to._registry != null ? to._registry.MaxStackOf(source.ItemId) : (ushort)1;
+
+                if (destination.Count < maxStack)
+                {
+                    ushort moved = Math.Min((ushort)(maxStack - destination.Count), source.Count);
+
+                    destination.Count += moved;
+                    source.Count -= moved;
+
+                    to._slots[toSlot] = destination;
+                    from._slots[fromSlot] = source.Count == 0 ? ItemStack.Empty : source;
+
+                    from.Changed?.Invoke();
+                    to.Changed?.Invoke();
+                    return true;
+                }
+            }
+
+            /* A swap has to be checked against the *destination's* stack limit as well:
+             * the chest may cap an item lower than a backpack does, and a blind exchange
+             * would create a stack the destination is not allowed to hold. */
+            if (!destination.IsEmpty && !to.Accepts(source) )
+                return false;
+
+            if (!destination.IsEmpty && !from.Accepts(destination))
+                return false;
+
+            from._slots[fromSlot] = destination;
+            to._slots[toSlot] = source;
+
+            from.Changed?.Invoke();
+            to.Changed?.Invoke();
+            return true;
+        }
+
+        /// <summary>Whether a single slot here may legally hold this whole stack.</summary>
+        private bool Accepts(ItemStack stack)
+        {
+            ushort maxStack = _registry != null ? _registry.MaxStackOf(stack.ItemId) : (ushort)1;
+            return stack.Count <= maxStack;
+        }
+
+        private bool Swap(int from, int to)
+        {
+            (_slots[from], _slots[to]) = (_slots[to], _slots[from]);
+            Changed?.Invoke();
+            return true;
+        }
+
         /// <summary>Empties everything. This is what dying costs (TECH 9.3).</summary>
         public void Clear()
         {

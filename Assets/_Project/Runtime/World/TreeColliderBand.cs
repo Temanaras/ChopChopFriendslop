@@ -73,7 +73,7 @@ namespace ChopChop.World
                         continue;
 
                     TreeCollider collider = Rent();
-                    collider.Bind(new TreeId(chunk.Key, (ushort)i));
+                    collider.Bind(new TreeId(chunk.Key, (ushort)i), chunk.Trees[i].TierIndex);
                     collider.transform.SetPositionAndRotation(
                         world, Quaternion.Euler(0f, chunk.Trees[i].YRotation, 0f));
                     collider.transform.localScale = Vector3.one * chunk.Trees[i].Scale;

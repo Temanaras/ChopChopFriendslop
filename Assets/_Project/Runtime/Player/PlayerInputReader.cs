@@ -1,3 +1,4 @@
+using ChopChop.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -24,11 +25,16 @@ namespace ChopChop.Player
         private bool _jumpLatched;
         private bool _resolved;
 
+        /* An open screen has the player's hands (see UiFocus). Reading zero here rather
+         * than disabling the component keeps the actions enabled and the latches clean,
+         * so closing a menu does not deliver the press that closed it. */
+        private static bool Blocked => UiFocus.GameplayBlocked;
+
         /// <summary>
         /// Movement on the XZ plane, relative to the camera. <see cref="PlayerMotor"/>
         /// rotates it into world space before it becomes a tick's input.
         /// </summary>
-        public Vector2 MoveInput => _move?.ReadValue<Vector2>() ?? Vector2.zero;
+        public Vector2 MoveInput => Blocked ? Vector2.zero : _move?.ReadValue<Vector2>() ?? Vector2.zero;
 
         /// <summary>
         /// Look delta for this frame, in mouse counts rather than degrees.
@@ -39,14 +45,14 @@ namespace ChopChop.Player
         /// position rather than a delta and would need that scaling, which is the reason
         /// this is exposed raw instead of pre-converted.
         /// </summary>
-        public Vector2 LookInput => _look?.ReadValue<Vector2>() ?? Vector2.zero;
+        public Vector2 LookInput => Blocked ? Vector2.zero : _look?.ReadValue<Vector2>() ?? Vector2.zero;
 
         /// <summary>
         /// Whether sprint is held right now. Sampled at tick time like movement rather
         /// than latched like jump: holding it is the whole interaction, so there is no
         /// brief press to miss between ticks.
         /// </summary>
-        public bool SprintHeld => _sprint?.IsPressed() ?? false;
+        public bool SprintHeld => !Blocked && (_sprint?.IsPressed() ?? false);
 
         /* Actions are resolved on enable rather than in Awake, and this component is
          * only enabled for the owning client. Unity runs Awake even on disabled
@@ -115,6 +121,16 @@ namespace ChopChop.Player
 
         private void Update()
         {
+            /* Cleared rather than merely ignored: a press made while a menu was open is
+             * not a press the player meant for the world, and holding it would fire the
+             * moment they closed the menu. */
+            if (Blocked)
+            {
+                _jumpLatched = false;
+                _interactLatched = false;
+                return;
+            }
+
             if (_jump != null && _jump.WasPressedThisFrame())
                 _jumpLatched = true;
 

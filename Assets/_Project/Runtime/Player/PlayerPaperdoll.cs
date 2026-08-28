@@ -1,5 +1,6 @@
 using System;
 using ChopChop.Items;
+using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
@@ -41,6 +42,21 @@ namespace ChopChop.Player
         /// <summary>Raised on every machine when equipment changes, for held-item visuals.</summary>
         public event Action<ItemSlot, ItemStack> Equipped;
 
+        /// <summary>
+        /// Raised on the owning client whenever carried cargo changes.
+        ///
+        /// The server has <see cref="ItemContainer.Changed"/>; the owner had nothing and
+        /// had to poll. The replicated list was already raising this internally — it
+        /// simply had no listener.
+        /// </summary>
+        public event Action CarriedChanged;
+
+        /// <summary>
+        /// Raised on the owning client when the server refuses one of the requests below.
+        /// A slot that springs back without saying why reads as a bug.
+        /// </summary>
+        public event Action<ItemMoveResult> RequestRefused;
+
         public ItemStack GetEquipped(ItemSlot slot)
         {
             int index = (int)slot;
@@ -70,11 +86,13 @@ namespace ChopChop.Player
         private void Awake()
         {
             _equipped.OnChange += HandleEquippedChanged;
+            _carried.OnChange += HandleCarriedChanged;
         }
 
         private void OnDestroy()
         {
             _equipped.OnChange -= HandleEquippedChanged;
+            _carried.OnChange -= HandleCarriedChanged;
         }
 
         /// <summary>Called at boot; the registry lives outside the scene.</summary>
@@ -84,6 +102,23 @@ namespace ChopChop.Player
 
             if (IsServerInitialized && _inventory == null)
                 CreateInventory();
+        }
+
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+
+            /* The bootstrap binds the registry server-side, on the line where it hands
+             * out the starting axe. A client has no equivalent moment, so without this
+             * every tier reads as zero however well-equipped the player actually is.
+             *
+             * That is not cosmetic: the chop meter sizes its bands from AxeTier, and the
+             * server grades against the real one. A client drawing tier-0 bands would
+             * watch perfectly-timed swings come back as misses, and it would read as lag
+             * rather than as a bug. Only a real client catches this — a hosted server
+             * shares the server's already-bound instance (TECH 15). */
+            if (_registry == null && Core.ServiceLocator.TryGet(out ItemRegistry registry))
+                _registry = registry;
         }
 
         public override void OnStartServer()
@@ -112,6 +147,17 @@ namespace ChopChop.Player
         {
             if (op == SyncListOperation.Set && index >= 0 && index < ItemSlots.Count)
                 Equipped?.Invoke((ItemSlot)index, next);
+        }
+
+        private void HandleCarriedChanged(SyncListOperation op, int index, ItemStack previous,
+            ItemStack next, bool asServer)
+        {
+            /* Server-side writes are already visible through ItemContainer.Changed, and
+             * on a hosted server both fire for the same edit. Raising only the client
+             * pass keeps this event meaning exactly one thing: "what the owner can see
+             * has changed". */
+            if (!asServer)
+                CarriedChanged?.Invoke();
         }
 
         /// <summary>Mirrors the server-side container into the replicated list.</summary>
@@ -187,6 +233,153 @@ namespace ChopChop.Player
             _inventory?.Load(carried);
             PushInventory();
         }
+
+        // ---------------- Client requests ----------------
+
+        /*
+         * Everything below is a *request*. The client names slots and nothing else; the
+         * server re-reads its own state and decides (TECH 9.4). Written with
+         * RequireOwnership = true — unlike chopping or the chest, which are things you do
+         * to the world, this is a player rummaging in their own pockets, and nobody else
+         * has any business asking.
+         *
+         * Every path answers, including the successful one, because "no reply" and
+         * "refused" have to be distinguishable from a dropped packet.
+         */
+
+        /// <summary>
+        /// Wear what is in a carried slot; whatever it displaces lands there.
+        ///
+        /// <paramref name="intended"/> is the slot the player actually pointed at.
+        /// <see cref="ItemSlot.None"/> means "wherever it belongs", for a future
+        /// right-click-to-equip. A drag names the slot, and naming the wrong one is
+        /// refused rather than quietly redirected — a rifle dropped on the axe slot that
+        /// silently lands in the gun slot moves an item the player was not looking at.
+        /// </summary>
+        [ServerRpc]
+        public void RequestEquip(int carriedSlot, ItemSlot intended)
+        {
+            if (_inventory == null || _registry == null
+                || carriedSlot < 0 || carriedSlot >= _inventory.SlotCount)
+            {
+                Answer(ItemMoveResult.Invalid);
+                return;
+            }
+
+            ItemStack stack = _inventory[carriedSlot];
+
+            if (stack.IsEmpty)
+            {
+                Answer(ItemMoveResult.NothingThere);
+                return;
+            }
+
+            /* Checked against the definition, not against what the client claims: the
+             * client says where it aimed, the server says what the item is. */
+            if (intended != ItemSlot.None && _registry.SlotOf(stack.ItemId) != intended)
+            {
+                Answer(ItemMoveResult.WrongSlot);
+                return;
+            }
+
+            // TryEquip re-checks the item's own definition, so a client naming an axe for
+            // the light slot gets nowhere.
+            if (!TryEquip(stack, out ItemStack displaced))
+            {
+                Answer(ItemMoveResult.WrongSlot);
+                return;
+            }
+
+            /* A single write rather than TakeSlot-then-SetSlot: equipping is a swap, and
+             * the intermediate state where the item is in neither place would be pushed
+             * to the client as an inventory that briefly lost something. */
+            _inventory.SetSlot(carriedSlot, displaced);
+            Answer(ItemMoveResult.Ok);
+        }
+
+        /// <summary>
+        /// Take something off. <paramref name="toCarriedSlot"/> below zero means anywhere
+        /// it fits; naming an occupied slot swaps, provided the occupant belongs in the
+        /// slot being emptied.
+        /// </summary>
+        [ServerRpc]
+        public void RequestUnequip(ItemSlot slot, int toCarriedSlot)
+        {
+            if (_inventory == null || _registry == null || slot == ItemSlot.None)
+            {
+                Answer(ItemMoveResult.Invalid);
+                return;
+            }
+
+            ItemStack worn = GetEquipped(slot);
+
+            if (worn.IsEmpty)
+            {
+                Answer(ItemMoveResult.NothingThere);
+                return;
+            }
+
+            if (toCarriedSlot >= _inventory.SlotCount)
+            {
+                Answer(ItemMoveResult.Invalid);
+                return;
+            }
+
+            if (toCarriedSlot >= 0)
+            {
+                ItemStack destination = _inventory[toCarriedSlot];
+
+                if (!destination.IsEmpty)
+                {
+                    // Dropping the worn axe onto another axe is a swap, not a refusal.
+                    if (_registry.SlotOf(destination.ItemId) != slot)
+                    {
+                        Answer(ItemMoveResult.WrongSlot);
+                        return;
+                    }
+
+                    TryEquip(destination, out ItemStack displaced);
+                    _inventory.SetSlot(toCarriedSlot, displaced);
+                    Answer(ItemMoveResult.Ok);
+                    return;
+                }
+
+                _inventory.SetSlot(toCarriedSlot, Unequip(slot));
+                Answer(ItemMoveResult.Ok);
+                return;
+            }
+
+            if (!_inventory.HasRoomFor(worn.ItemId, worn.Count))
+            {
+                // Checked before unequipping: taking it off first and then failing to
+                // stow it would delete the item.
+                Answer(ItemMoveResult.NoRoom);
+                return;
+            }
+
+            Unequip(slot);
+            _inventory.TryAdd(worn.ItemId, worn.Count, worn.Durability);
+            Answer(ItemMoveResult.Ok);
+        }
+
+        /// <summary>Rearrange carried cargo: merge onto a matching stack, or swap.</summary>
+        [ServerRpc]
+        public void RequestMoveCarried(int from, int to)
+        {
+            if (_inventory == null)
+            {
+                Answer(ItemMoveResult.Invalid);
+                return;
+            }
+
+            Answer(_inventory.Move(from, to) ? ItemMoveResult.Ok : ItemMoveResult.NothingThere);
+        }
+
+        private void Answer(ItemMoveResult result) => AnswerRequest(Owner, result);
+
+        [TargetRpc]
+        private void AnswerRequest(NetworkConnection connection, ItemMoveResult result)
+            => RequestRefused?.Invoke(result);
 
         public ItemStack[] EquippedToArray()
         {

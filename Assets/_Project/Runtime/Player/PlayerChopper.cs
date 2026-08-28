@@ -45,10 +45,39 @@ namespace ChopChop.Player
                  "A bounce or a thunk goes here — silence reads as a bug (TECH 5.6).")]
         public UnityEvent<byte> Rejected;
 
+        [Tooltip("Fired when the swing struck the wrong half of the arc. The stumble goes " +
+                 "here: a wasted swing the player can feel, not just fail to see.")]
+        public UnityEvent Missed;
+
+        [Header("Timing")]
+        [Tooltip("How long a full miss locks the player out. Long enough to cost something, " +
+                 "short enough that it does not read as a freeze.")]
+        [SerializeField] private float _stumbleSeconds = 0.9f;
+
         private InputAction _attack;
         private TreeClient _trees;
         private PlayerLoadout _loadout;
+        private PlayerPaperdoll _paperdoll;
         private bool _resolved;
+        private float _stumbleUntil;
+        private bool _hasTarget;
+        private TreeId _target;
+        private byte _targetTier;
+
+        /// <summary>
+        /// The tree under the crosshair, or false when there is none. The chop meter draws
+        /// against this — it is the same raycast the swing uses, so what the meter is
+        /// timing is always the tree that would actually be hit.
+        /// </summary>
+        public bool TryGetTarget(out TreeId target, out byte tier)
+        {
+            target = _target;
+            tier = _targetTier;
+            return _hasTarget;
+        }
+
+        /// <summary>True while a missed swing still has the player off balance.</summary>
+        public bool IsStumbling => Time.time < _stumbleUntil;
 
         public override void OnStartClient()
         {
@@ -61,6 +90,7 @@ namespace ChopChop.Player
             }
 
             TryGetComponent(out _loadout);
+            TryGetComponent(out _paperdoll);
 
             InputActionAsset actions = InputSystem.actions;
             _attack = actions != null ? actions.FindAction("Player/Attack") : null;
@@ -92,9 +122,46 @@ namespace ChopChop.Player
 
         private void HandleRejected(ChopRejectedBroadcast message)
         {
+            /* A miss is not a refusal in the same sense — the request was fine, the
+             * timing was not — so it drives the stumble rather than the thunk. The
+             * lockout is client-side because it is a penalty the player accepts, not a
+             * rule the server has to enforce: the swing cadence floor already bounds
+             * anyone who skips it. */
+            if (message.Reason == ChopRejection.Missed)
+            {
+                _stumbleUntil = Time.time + _stumbleSeconds;
+                Missed?.Invoke();
+                return;
+            }
+
             // Tier is the one refusal a player can act on: a better axe, not a closer
             // stance. The rest still get a thunk so nothing ever fails silently.
             Rejected?.Invoke(message.RequiredTier);
+        }
+
+        /// <summary>
+        /// Where the swing would land, run every frame so the meter has a target before
+        /// the player commits. Same origin, direction and mask as <see cref="Swing"/>.
+        /// </summary>
+        private void UpdateTarget()
+        {
+            _hasTarget = false;
+
+            if (_loadout != null && !_loadout.IsHolding(PlayerLoadout.Tool.Axe))
+                return;
+
+            Transform from = _origin != null ? _origin : transform;
+            Vector3 direction = _aim != null ? _aim.forward : from.forward;
+
+            if (!Physics.Raycast(from.position, direction, out RaycastHit hit, _range, _hitMask))
+                return;
+
+            if (!hit.collider.TryGetComponent(out TreeCollider tree))
+                return;
+
+            _target = tree.Id;
+            _targetTier = tree.Tier;
+            _hasTarget = true;
         }
 
         private void Update()
@@ -102,8 +169,19 @@ namespace ChopChop.Player
             if (!IsOwner || _attack == null)
                 return;
 
+            /* Reads the Input System directly rather than through PlayerInputReader, so
+             * disabling that reader does nothing here — the check has to be its own. */
+            if (Core.UiFocus.GameplayBlocked)
+                return;
+
+            UpdateTarget();
+
             // The axe and the gun share the primary button, so only the held one acts.
             if (_loadout != null && !_loadout.IsHolding(PlayerLoadout.Tool.Axe))
+                return;
+
+            // Off balance from a missed swing. This is the whole cost of a miss.
+            if (IsStumbling)
                 return;
 
             if (!_attack.WasPressedThisFrame())

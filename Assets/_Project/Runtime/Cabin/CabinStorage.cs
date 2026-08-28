@@ -112,6 +112,67 @@ namespace ChopChop.Cabin
             return TransferResult.Ok;
         }
 
+        /// <summary>
+        /// Deposit into a named chest slot, so a drag lands where it was dropped.
+        /// A negative <paramref name="toSlot"/> means "anywhere it fits".
+        /// </summary>
+        public TransferResult Deposit(ItemContainer from, int fromSlot, int toSlot)
+        {
+            if (toSlot < 0)
+                return Deposit(from, fromSlot);
+
+            if (from == null || fromSlot < 0 || fromSlot >= from.SlotCount || toSlot >= _container.SlotCount)
+                return TransferResult.Invalid;
+
+            if (from[fromSlot].IsEmpty)
+                return TransferResult.NothingThere;
+
+            if (!ItemContainer.MoveBetween(from, fromSlot, _container, toSlot))
+                return TransferResult.NoRoom;
+
+            Sync();
+            return TransferResult.Ok;
+        }
+
+        /// <summary>
+        /// Withdraw into a named backpack slot. A negative <paramref name="toSlot"/>
+        /// means "anywhere it fits".
+        /// </summary>
+        public TransferResult Withdraw(ItemContainer to, int storageSlot, int toSlot)
+        {
+            if (toSlot < 0)
+                return Withdraw(to, storageSlot);
+
+            if (to == null || storageSlot < 0 || storageSlot >= _container.SlotCount || toSlot >= to.SlotCount)
+                return TransferResult.Invalid;
+
+            // The race lands here too: the slot a client pointed at may already be empty.
+            if (_container[storageSlot].IsEmpty)
+                return TransferResult.NothingThere;
+
+            if (!ItemContainer.MoveBetween(_container, storageSlot, to, toSlot))
+                return TransferResult.NoRoom;
+
+            Sync();
+            return TransferResult.Ok;
+        }
+
+        /// <summary>
+        /// Rearrange the chest without taking anything out of it. Merges onto a matching
+        /// stack, swaps otherwise.
+        /// </summary>
+        public TransferResult Move(int from, int to)
+        {
+            if (from < 0 || from >= _container.SlotCount || to < 0 || to >= _container.SlotCount)
+                return TransferResult.Invalid;
+
+            if (!_container.Move(from, to))
+                return TransferResult.NothingThere;
+
+            Sync();
+            return TransferResult.Ok;
+        }
+
         /// <summary>Puts items straight in, e.g. loot from a felled tree.</summary>
         public ushort Add(ushort itemId, ushort count)
         {

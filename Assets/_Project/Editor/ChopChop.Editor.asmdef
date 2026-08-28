@@ -15,7 +15,10 @@
         "ChopChop.Persistence",
         "ChopChop.UI",
         "ChopChop.Bootstrap",
-        "FishNet.Runtime"
+        "FishNet.Runtime",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"
