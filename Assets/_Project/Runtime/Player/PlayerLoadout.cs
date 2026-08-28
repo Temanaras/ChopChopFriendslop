@@ -84,7 +84,7 @@ namespace ChopChop.Player
 
         private void Update()
         {
-            if (!IsOwner)
+            if (!IsOwner || Core.UiFocus.GameplayBlocked)
                 return;
 
             bool toggled = (_next != null && _next.WasPressedThisFrame())

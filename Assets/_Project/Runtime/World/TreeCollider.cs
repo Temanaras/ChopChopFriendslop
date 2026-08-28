@@ -36,6 +36,20 @@ namespace ChopChop.World
     {
         public TreeId Id { get; private set; }
 
-        public void Bind(TreeId id) => Id = id;
+        /// <summary>
+        /// The tree's tier, carried here rather than looked up again.
+        ///
+        /// It is intrinsic to the tree and known at the moment the collider is placed
+        /// (TECH 5.2), and the alternative is that everything downstream — the chop
+        /// meter, the failure feedback — re-derives the chunk and re-indexes the array
+        /// for a byte the raycast already had in its hand.
+        /// </summary>
+        public byte Tier { get; private set; }
+
+        public void Bind(TreeId id, byte tier)
+        {
+            Id = id;
+            Tier = tier;
+        }
     }
 }

@@ -333,10 +333,16 @@ the diffs and lets regeneration handle it next time.
 
 ```
 Client → Server:  SubscribeChunksBroadcast   { long[] chunkKeys }
+Client → Server:  ChopRequestBroadcast       { long chunkKey, ushort idx, uint tick }
 Server → Client:  ChunkDiffsBroadcast        { long chunkKey, TreeDiff[] diffs }
-Server → Clients: TreeDamagedBroadcast       { long chunkKey, ushort idx, byte hp }
+Server → Clients: TreeDamagedBroadcast       { long chunkKey, ushort idx, byte hp, ChopGrade grade }
 Server → Clients: TreeFelledBroadcast        { long chunkKey, ushort idx, uint tick }
+Server → Client:  ChopRejectedBroadcast      { long chunkKey, ushort idx, ChopRejection, byte tier }
 ```
+
+**These structs are wire format: append fields, never renumber or reorder**, the same
+rule `EnemyState` carries in §10.3. `ChopRequestBroadcast.Tick` and
+`TreeDamagedBroadcast.Grade` were both appended for the chopping timing game (§5.6a).
 
 `TreeDamaged` / `TreeFelled` go only to clients subscribed to that chunk. Maintain
 a `Dictionary<long, HashSet<NetworkConnection>>` server-side for this.
@@ -349,18 +355,73 @@ Use FishNet **broadcasts** rather than RPCs for these — broadcasts don't requi
 1. Client raycasts, hits a tree collider, reads `TreeId` off the collider's
    component
 2. Client plays swing + impact VFX immediately
-3. Client sends `ChopRequest { chunkKey, localIndex }`
-4. Server validates: does the tree exist, is it not already felled, is the player
-   within range (with tolerance), does the player's equipped axe tier meet the
-   tree's tier
+3. Client sends `ChopRequest { chunkKey, localIndex, tick }` — the tick it pressed on
+4. Server validates: is the claimed tick near the server's own, does the tree exist,
+   is it not already felled, is the player within range (with tolerance), does the
+   player's equipped axe tier meet the tree's tier
 5. **Tier failure is a hard gate** — zero damage. Server replies with
    `ChopRejected { requiredTier }` so the client can show feedback. Client plays a
    bounce/thunk. Silent nothing reads as a bug.
-6. On success, server applies damage, updates the diff, broadcasts to subscribers,
-   and spawns loot if felled
+6. Server grades the swing (§5.6a), applies the damage that grade is worth, updates
+   the diff, broadcasts to subscribers, and spawns loot if felled
 
 Rate-limit `ChopRequest` server-side to the axe's swing cadence. Never trust
 client timing.
+
+### 5.6a The chopping timing game
+
+Chopping is a timing game, not a held button. A pointer travels up and down the
+curved edge of a semicircle. One half of the arc is the target; the other is a miss.
+The target half carries five bands, laid out symmetrically about its middle:
+
+```
+        Bad | Good | PERFECT | Good | Bad
+```
+
+**Perfect sits in the middle of the half, not at the tip.** That leaves a margin of
+error on both sides rather than one, and the middle of a sweep is where a moving
+pointer is easiest to read against a fixed mark.
+
+**The target half swaps on every landed hit — Bad, Good or Perfect alike — and holds
+on a miss.** So the wedge is opened from alternating sides the way a real one is, and
+a whiffed swing does not cost you your place in the rhythm.
+
+**The server grades the swing, not the client.** This is what keeps the feature
+inside §2.1 rather than trading authority for feel:
+
+- The pointer's position is `ChopMeter.Phase(tick, tickRate, treeId, settings)` — a
+  pure function of the synced network tick and the tree's id. Both sides compute it.
+- The client draws it. The server recomputes it for the tick the request carries.
+- **Nothing new is trusted.** The only thing the client supplies is *when* it swung,
+  and `TreeServer.TickTolerance` (9 ticks, 300ms) bounds how far that may sit from
+  the server's own clock. That buys latency compensation and nothing else.
+
+**How the alternation costs nothing.** The live half is derived from the tree's
+replicated health, not tracked per player — so it needs no extra bytes, no save-format
+change, is correct for a client that joined halfway through felling a trunk, and gives
+two players on the same tree the same answer.
+
+It works because **every grade takes an odd number of `ChopMeter.WedgeStep`s** out of
+the trunk (Bad 1, Good 3, Perfect 5), so the parity of the step count flips on every
+landed hit whatever the grade was, and a miss — which takes nothing — leaves it alone.
+That constraint is load-bearing and easy to break by retuning, so
+`EveryGradeAdvancesTheWedgeByAnOddNumberOfSteps` pins it.
+
+**Tuning, and where it lives.** `ChopMeter` owns the whole damage table; `TreeServer`
+has no damage lever of its own, because the client needs the same numbers to know
+which half is live and a second knob could only disagree.
+
+| | |
+| --- | --- |
+| Crossing time, tier-1 tree | 1.2s (`BaseSweepSeconds`), faster per tree tier |
+| Perfect window, tier-1 axe | ~108ms — pinned above 100ms by a test, below which it is a gamble rather than a skill |
+| Band half-widths | from the axe tier: a better axe is a wider target |
+| Damage | Bad 24, Good 72, Perfect 120, Miss 0 |
+| Swings to fell | 3 perfect, 4 good, 11 scraped |
+
+A full miss deals no damage and stumbles the player, a client-side lockout of about a
+second. It is a penalty the player accepts rather than a rule the server enforces; the
+cadence floor (`SwingCooldownTicks`, 9) already bounds anyone who skips it.
 
 ### 5.7 Handcrafted center
 
@@ -748,6 +809,29 @@ of both source and destination. Assume concurrent access — two players will gr
 the same stack simultaneously on day one. Validate against current server state,
 not against what the client thinks it saw.
 
+**The requests a screen may send.** All of them name slots and nothing else, and all
+of them answer — including on success, so "refused" is distinguishable from a dropped
+packet. `ItemMoveResult` is the shared vocabulary, in `Items` so the player's bag and
+the cabin's chest refuse in the same words.
+
+| Request | On | Notes |
+| --- | --- | --- |
+| `RequestEquip(carriedSlot, intended)` | `PlayerPaperdoll` | `intended` is the slot the player *pointed at*; a mismatch is refused rather than silently redirected |
+| `RequestUnequip(slot, toCarriedSlot)` | `PlayerPaperdoll` | negative destination means anywhere it fits |
+| `RequestMoveCarried(from, to)` | `PlayerPaperdoll` | owner-only; rummaging in your own pockets |
+| `RequestDeposit(inventorySlot, storageSlot)` | `CabinChest` | reach-checked; negative destination means anywhere |
+| `RequestWithdraw(storageSlot, inventorySlot)` | `CabinChest` | where the two-players-one-stack race lands |
+| `RequestMoveStorage(from, to)` | `CabinChest` | tidying the chest is still a shared-container edit |
+
+`ItemContainer.Move` and `ItemContainer.MoveBetween` are the primitives underneath.
+Both are single operations rather than take-then-add, because the halfway state has
+the stack in neither slot and every container pushes to clients on change — a player
+would watch the item blink out of existence before arriving.
+
+**Equipment never moves straight to the chest.** That would be two authorities and
+two round trips, and the second could fail after the first succeeded. Take it off
+first; the UI says so.
+
 ### 9.5 Interaction
 
 `IInteractable` lives in `Core` and deliberately names no networking type: an
@@ -764,6 +848,11 @@ the player reaches through walls the player is standing against.
 state and a `[ServerRpc(RequireOwnership = false)]` to toggle it. It is deliberately
 **not** an `ICabinFixture` — it needs no storage and no container, and making
 everything in the cabin a fixture would make the seam meaningless.
+
+`CabinChest` is both: an `ICabinFixture` for its contents and an `IInteractable` so it
+can be opened. Its `Interact()` raises a static `Opened` event on the interacting
+client rather than sending an RPC — opening a container is a local act, and only the
+transfers are authoritative.
 
 ### 9.6 The cabin, and how fixtures attach
 
@@ -1072,26 +1161,61 @@ first thing worth reading after §2.
   rolls about 30 degrees apart, and no fixed value satisfies both. It reads correctly at
   rest, which is what you see most.
 
-### 18.2 UI — read this before building one
+### 18.2 UI
 
-Three things that will otherwise be discovered by compile error or by surprise:
+There is a HUD now. What follows is what it is made of and the three rules that shape
+it — the first of which is the only one that is non-negotiable.
 
 1. **`UI` must not reference `Bootstrap`** (§3). When the UI needs something only the
    composition root can do, put the contract in `Core` and have the bootstrap register
    itself as it. `ISessionLauncher` is the worked example; copy that shape.
-2. **IMGUI is the deliberate placeholder idiom**, not an accident. `OnGUI` is cheap to
-   write and, more importantly, cheap to *delete* — these screens exist to be replaced
-   wholesale. There are exactly two in the entire runtime: `StartScreen` and
-   `InteractionPrompt`.
-3. **There is no HUD at all.** No health, no inventory, no chest view, no wood count.
-   The loop is closed in code and almost entirely invisible: you can chop a tree, watch
-   it fall, collect the wood and stow it in the chest without the game ever telling you
-   any of that happened.
+2. **`StartScreen` is still IMGUI, deliberately.** It is the one screen that runs
+   before anything else exists, it is correct, and it is still the thing most likely
+   to be replaced wholesale. `InteractionPrompt` was the other one and is gone,
+   replaced by `InteractionPromptView` on the canvas.
+3. **The canvas is generated, not hand-built.** `ChopChop/UI/Build Missing UI Assets`
+   authors `UiRoot.prefab` and `ItemSlot.prefab` from `Editor/UiBuilder.cs`, in the
+   same spirit as the placeholder trunk (§18.1): the numbers that decide where the
+   health bar sits are readable in a diff. **Unlike the trunk, it refuses to
+   overwrite** — a mesh has no hand edits worth keeping and a UI has nothing but, so
+   the destructive rebuild is a second, explicitly-named menu item.
 
-The binding surface already exists and was built for exactly this. `ItemContainer`
-raises `Changed` whenever any slot moves, so a view can refresh without polling;
-`Health`, `PlayerPaperdoll` and `CabinChest` are the other read points. Prefer observing
-those to reaching into the bootstrap.
+**Layout.** One `Canvas` (Screen Space Overlay, 1920x1080, match 0.5) in `Boot.unity`,
+`DontDestroyOnLoad` like the bootstrap beside it — the world scene loads with
+`ReplaceOption.All`, so anything that must outlive boot says so itself.
+
+```
+UiRoot            Canvas + UiRoot + HudController
+  EventSystem     InputSystemUIInputModule, pointed at the project-wide actions asset
+  HUD             health, ammo, crosshair, interaction prompt, chop meter, chop feedback
+  Inventory       InventoryScreen: backpack, paperdoll, and the cabin chest beside them
+```
+
+**`UiRoot` destroys itself under `-batchmode` / a null graphics device.** A dedicated
+server must never build a canvas, an EventSystem or a font atlas. This is the reason
+the headless run in §15 matters after touching the UI at all.
+
+**`UiFocus` (in `Core`) is how a screen takes the player's hands.** Gameplay input has
+four independent readers — `PlayerInputReader`, and the chopper, weapon and loadout,
+which each reach into the Input System directly — so disabling one does nothing to the
+others. `UiFocus.Capture()` returns a token; every reader checks `GameplayBlocked`, and
+`PlayerCameraRig` drives the cursor from `WantsCursor`. It is counted, not boolean,
+because the chest opens over the inventory and closing one must not hand movement back
+while the other is up.
+
+**Binding.** `LocalPlayer` registers itself owner-only in the `ServiceLocator` and
+exposes `Paperdoll`, `Health`, `Ammo`, `Loadout`, `Interactor` and `Chopper`.
+`PlayerBoundView` is the base that resolves it lazily and rebinds when it changes —
+the player spawns long after the UI exists and is replaced on respawn, so resolving
+once in `Awake` binds to nothing forever.
+
+Prefer observing the data: `ItemContainer.Changed`, `PlayerPaperdoll.CarriedChanged`
+and `Equipped`, `CabinChest.ContentsChanged`, `Health.Changed`, `WeaponAmmo.Changed`,
+`TreeClient.TreeDamaged`. Nothing in the UI polls a container.
+
+**No item icons exist.** Every `ItemDefinition.Icon` is unassigned, so `ItemSlotView`
+falls back to a tier-tinted chip with the item's initials. It prefers the sprite
+whenever there is one, so filling those fields in is the whole migration.
 
 ### 18.3 Open debts
 
@@ -1101,7 +1225,20 @@ Known, deliberate, and unfixed. Roughly in order of what a stranger would hit fi
   the cabin, and the 3m third-person boom pushes the camera through the -Z wall — a
   client spawning at (2, 0.1, -2) ends up 0.75m from `Wall -Z` staring at it. The boom
   needs a spherecast that pulls in on obstruction; until then, indoors is unusable and
-  it is the *first* thing anyone sees.
+  it is the *first* thing anyone sees. **Now the most visible thing on the list** — the
+  HUD works, so this is what a playtester will actually complain about first.
+- **A missed swing has no animation.** `PlayerChopper.Missed` fires and the player is
+  locked out for about a second, and nothing on the body shows it. The feedback is a
+  word on screen. It needs a stumble clip on the `Chop` state, or the penalty reads as
+  the game having hiccupped.
+- **The chop meter is placeholder art.** Radial-filled built-in sprites: a half disc
+  with a hub punched out, and three images stacked to read as five bands. Every band
+  width, arc extent and sweep rate is authored data (`ChopMeterSettings.For`), so
+  replacing the look does not touch the timing.
+- **No item icons.** See §18.2. Slots draw initials.
+- **The inventory has no split, no stack-halving and no right-click.** Whole slots
+  only. `ItemContainer.Move` already leaves a remainder behind on a partial merge, so
+  the container is ready for it; the UI is not.
 - **Sprint outruns its animation.** Sprint is 8.5 m/s; the locomotion blend tree tops out
   at 5. The legs simply stop keeping up.
 - **Two vendored FishyFacepunch patches with no update path** (§1). Fork and pin, or
@@ -1115,3 +1252,9 @@ Known, deliberate, and unfixed. Roughly in order of what a stranger would hit fi
   which is not the same as being enforced.
 - **`.git` is ~113MB**, mostly the deleted acacia pack still in history. Harmless until
   somebody clones it on a bad connection.
+- **The chop meter's tuning is untested against real play.** The 1.2s crossing and the
+  band widths in `ChopMeterSettings.For` were chosen to be gentle at tier 1 and have
+  never been felt at 100ms by anyone but the person who wrote them. This is the same
+  warning §7.4 gives about regrowth, and for the same reason: it cannot be tuned on
+  paper. Two things to feel for — is the wait between chances *boring* rather than
+  tense, and does alternating sides read as a wedge or as the meter jumping about?

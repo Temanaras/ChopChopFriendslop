@@ -39,11 +39,32 @@ namespace ChopChop.World
 
         private bool _subscribed;
 
-        /// <summary>Damage one swing does. Tuning lever; tier gating is separate.</summary>
-        public byte DamagePerSwing { get; set; } = 64;
+        /* Damage is no longer a knob here. It comes from how the swing was graded, and
+         * the client has to be able to compute the same figure to know which half of the
+         * arc is live — so the whole table lives in ChopMeter, where both sides can see
+         * it. A second lever on this class could only ever disagree with it. */
 
-        /// <summary>Minimum ticks between accepted chops from one player.</summary>
-        public uint SwingCooldownTicks { get; set; } = 15;
+        /// <summary>
+        /// Minimum ticks between accepted chops from one player.
+        ///
+        /// Lowered from 15 (0.5s) once the meter started pacing chopping: the rhythm asks
+        /// for a strike near each end of the sweep, and at the faster tree tiers that
+        /// falls inside half a second. This is now a floor against a held button, not the
+        /// thing that decides cadence.
+        /// </summary>
+        public uint SwingCooldownTicks { get; set; } = 9;
+
+        /// <summary>
+        /// How far the tick a client claims to have swung on may sit from the server's
+        /// own before the swing is refused.
+        ///
+        /// This is the bound that keeps the timing game honest without weakening TECH
+        /// 2.1. The server grades the swing itself; all the client supplies is *when*,
+        /// and it may only move that within roughly the latency it is being compensated
+        /// for. Nine ticks at 30Hz is 300ms — comfortably past the 100ms the game is
+        /// tested at, and far short of letting anyone pick their moment.
+        /// </summary>
+        public uint TickTolerance { get; set; } = 9;
 
         /// <summary>
         /// Reads a connection's equipped axe tier. Supplied at boot so this assembly does
@@ -189,7 +210,26 @@ namespace ChopChop.World
 
             _lastChopTick[connection] = tick;
 
-            if (!_diffs.TryApplyDamage(message.ChunkKey, message.LocalIndex, DamagePerSwing, worldTick,
+            /* Graded here, from the server's own recomputation of the pointer position at
+             * the tick the client claims. The client never sends a grade — it sends a
+             * tick, which was bounded above. */
+            ChopMeterSettings settings = ChopMeterSettings.For(AxeTierFor(connection), tree.TierIndex);
+            byte health = _diffs.GetHealth(message.ChunkKey, message.LocalIndex);
+            float phase = ChopMeter.Phase(message.Tick, _networkManager.TimeManager.TickRate, 
+                new TreeId(message.ChunkKey, message.LocalIndex), settings);
+            ChopGrade grade = ChopMeter.Grade(phase, ChopMeter.TopHalfActive(health), settings);
+
+            if (grade == ChopGrade.Miss)
+            {
+                // A miss is a legitimate outcome, not a bad request — but it is still an
+                // answer, so the client can stumble rather than swing into silence.
+                Reject(connection, message, ChopRejection.Missed, tree.TierIndex);
+                return;
+            }
+
+            byte damage = ChopMeter.DamageFor(grade);
+
+            if (!_diffs.TryApplyDamage(message.ChunkKey, message.LocalIndex, damage, worldTick,
                     out byte remaining, out bool felled))
             {
                 Reject(connection, message, ChopRejection.AlreadyFelled, tree.TierIndex);
@@ -214,6 +254,7 @@ namespace ChopChop.World
                 ChunkKey = message.ChunkKey,
                 LocalIndex = message.LocalIndex,
                 HealthRemaining = remaining,
+                Grade = grade,
             });
         }
 
@@ -228,6 +269,17 @@ namespace ChopChop.World
             if (_lastChopTick.TryGetValue(connection, out uint last) && tick - last < SwingCooldownTicks)
             {
                 rejection = ChopRejection.TooSoon;
+                return false;
+            }
+
+            /* The claimed swing tick is only honoured near the present. Unsigned
+             * subtraction both ways, because a client running slightly ahead of the
+             * server is normal and would otherwise wrap into an enormous difference. */
+            uint drift = message.Tick > tick ? message.Tick - tick : tick - message.Tick;
+
+            if (drift > TickTolerance)
+            {
+                rejection = ChopRejection.Mistimed;
                 return false;
             }
 

@@ -22,6 +22,13 @@ namespace ChopChop.Items
         public int Count => _items.Length;
 
         /// <summary>
+        /// Every definition, for the handful of questions that are about the set rather
+        /// than about one id — "which axe would fell this tree" being the first. Without
+        /// it the only way to ask is to probe every ushort in turn.
+        /// </summary>
+        public IReadOnlyList<ItemDefinition> All => _items;
+
+        /// <summary>
         /// Builds the lookup and reports anything wrong with it.
         /// </summary>
         /// <returns>False when the registry is unusable, so boot can refuse rather than

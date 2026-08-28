@@ -32,6 +32,13 @@ namespace ChopChop.World
         public long ChunkKey;
         public ushort LocalIndex;
         public byte HealthRemaining;
+
+        /// <summary>
+        /// How the server graded the swing. Appended, never renumbered — same rule as
+        /// EnemyState (TECH 10.3). Sent to everyone subscribed rather than only the
+        /// chopper, so a second player watching sees the same wedge open up.
+        /// </summary>
+        public ChopGrade Grade;
     }
 
     /// <summary>Sent only to clients subscribed to that chunk.</summary>
@@ -47,6 +54,17 @@ namespace ChopChop.World
     {
         public long ChunkKey;
         public ushort LocalIndex;
+
+        /// <summary>
+        /// The tick the player pressed on, so the swing is graded on when they actually
+        /// swung rather than on when the packet happened to land — at 100ms that is three
+        /// ticks of drift, which is most of a band.
+        ///
+        /// Not trusted: the server bounds it against its own clock and refuses anything
+        /// outside the window (see TreeServer). A client can shift its swing within a
+        /// few ticks, which is exactly the latency it is being compensated for.
+        /// </summary>
+        public uint Tick;
     }
 
     /// <summary>
@@ -78,5 +96,14 @@ namespace ChopChop.World
 
         /// <summary>Swinging faster than the axe allows.</summary>
         TooSoon = 5,
+
+        /// <summary>
+        /// The tick claimed is too far from the server's own for the grade to mean
+        /// anything. Either a very bad connection or a client trying to pick its moment.
+        /// </summary>
+        Mistimed = 6,
+
+        /// <summary>Struck the wrong half of the arc. Nothing wrong with the request.</summary>
+        Missed = 7,
     }
 }

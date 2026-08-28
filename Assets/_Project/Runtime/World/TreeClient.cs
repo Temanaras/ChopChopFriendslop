@@ -35,6 +35,12 @@ namespace ChopChop.World
         /// <summary>Raised when the server refuses a chop, so the client can show why.</summary>
         public event Action<ChopRejectedBroadcast> ChopRejected;
 
+        /// <summary>
+        /// A tree took damage, with how the swing was graded. Everyone subscribed to the
+        /// chunk hears it, not only the chopper, so a second player sees the same wedge.
+        /// </summary>
+        public event Action<TreeDamagedBroadcast> TreeDamaged;
+
         public TreeClient(NetworkManager networkManager, TreeDiffStore diffs)
         {
             _networkManager = networkManager ? networkManager : throw new ArgumentNullException(nameof(networkManager));
@@ -103,8 +109,19 @@ namespace ChopChop.World
             {
                 ChunkKey = chunkKey,
                 LocalIndex = localIndex,
+
+                /* Sent so the swing is graded on the moment the player pressed, not the
+                 * moment the packet arrived. The server bounds how far this may sit from
+                 * its own clock, so it buys latency compensation and nothing else. */
+                Tick = _networkManager.TimeManager.Tick,
             }, Channel.Reliable);
         }
+
+        /// <summary>The synced network tick, which is the clock the chop meter runs on.</summary>
+        public uint Tick => _networkManager.TimeManager.Tick;
+
+        /// <summary>Ticks per second, needed to turn the tick into a pointer position.</summary>
+        public uint TickRate => _networkManager.TimeManager.TickRate;
 
         private void HandleChunkDiffs(ChunkDiffsBroadcast message, Channel channel)
         {
@@ -116,6 +133,7 @@ namespace ChopChop.World
         {
             _diffs.ApplyDiff(message.ChunkKey, new TreeDiff(message.LocalIndex, message.HealthRemaining, 0));
             TreeChanged?.Invoke(message.ChunkKey, message.LocalIndex);
+            TreeDamaged?.Invoke(message);
         }
 
         private void HandleFelled(TreeFelledBroadcast message, Channel channel)

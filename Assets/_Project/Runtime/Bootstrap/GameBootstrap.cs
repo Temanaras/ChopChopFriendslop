@@ -719,6 +719,10 @@ namespace ChopChop.Bootstrap
             _world?.Dispose();
             _session?.Dispose();
             _lobby?.Dispose();
+
+            // A screen open when the session ended still holds a capture, and statics
+            // outlive a play session when domain reload is off.
+            UiFocus.Clear();
             ServiceLocator.Clear();
         }
     }
