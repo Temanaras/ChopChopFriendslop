@@ -1156,6 +1156,12 @@ first thing worth reading after §2.
   density grid of §12.1, which is still one float per 4m cell — they are different grids
   and changing one does not move the other.
 - **The clearing is radius 30 with a 12.5m ramp**, halved from its original size.
+- **Players start outside the cabin, facing it.** The four spawns sit in a shallow arc
+  at z 9 and 10, turned 180 degrees, so the first frame is the clearing, the treeline
+  and the cabin exterior with its doorway and lit campfire — rather than the inside of
+  a wall, which is what spawning at (±2, 0.1, ±2) used to give. The third-person boom
+  spherecasts and pulls in on obstruction, so indoors is usable as well as survivable:
+  it shortens from 3m to about 1.8m against a cabin wall and to 2.2m under the roof.
 - **The player carries a rigged axe**, socketed to the right hand, blade rolled 30
   degrees. That is a compromise, not a solution: the rest pose and the strike pose want
   rolls about 30 degrees apart, and no fixed value satisfies both. It reads correctly at
@@ -1221,16 +1227,13 @@ whenever there is one, so filling those fields in is the whole migration.
 
 Known, deliberate, and unfixed. Roughly in order of what a stranger would hit first:
 
-- **The first frame of a joined game is a brown wall.** The default spawn sits inside
-  the cabin, and the 3m third-person boom pushes the camera through the -Z wall — a
-  client spawning at (2, 0.1, -2) ends up 0.75m from `Wall -Z` staring at it. The boom
-  needs a spherecast that pulls in on obstruction; until then, indoors is unusable and
-  it is the *first* thing anyone sees. **Now the most visible thing on the list** — the
-  HUD works, so this is what a playtester will actually complain about first.
-- **A missed swing has no animation.** `PlayerChopper.Missed` fires and the player is
-  locked out for about a second, and nothing on the body shows it. The feedback is a
-  word on screen. It needs a stumble clip on the `Chop` state, or the penalty reads as
-  the game having hiccupped.
+- **Nobody sees anyone else swing, or stumble.** Both `PlayerChopper.Swung` and
+  `Missed` are raised inside owner-only code — `Swing()` only ever runs on the owner,
+  and the rejection is targeted at the connection that swung — so the chop animation
+  and the stumble are visible only to the player performing them. To a bystander, a
+  friend felling a tree stands still while the trunk shakes. Fixing it costs a
+  broadcast plus an answer for observers and late joiners, which is why it has not
+  been done. It is one debt rather than two, and it grew when the stumble landed.
 - **The chop meter is placeholder art.** Radial-filled built-in sprites: a half disc
   with a hub punched out, and three images stacked to read as five bands. Every band
   width, arc extent and sweep rate is authored data (`ChopMeterSettings.For`), so
@@ -1239,8 +1242,12 @@ Known, deliberate, and unfixed. Roughly in order of what a stranger would hit fi
 - **The inventory has no split, no stack-halving and no right-click.** Whole slots
   only. `ItemContainer.Move` already leaves a remainder behind on a partial merge, so
   the container is ready for it; the UI is not.
-- **Sprint outruns its animation.** Sprint is 8.5 m/s; the locomotion blend tree tops out
-  at 5. The legs simply stop keeping up.
+- **Sprint's cadence is close but not exact, and unfelt.** The blend tree now carries
+  idle/walk/run at 0/1.8/5.5 and `LocomotionRate` speeds playback up to 1.35, so the
+  legs run at about 7.4 m/s against 8.5 of travel instead of 5. The remaining lever is
+  `_sprintMultiplier`, deliberately not pulled: dropping it would mask the tree rather
+  than answer it. Like the chop meter below, this is a feel question that has never
+  been judged by anyone but the person who set the numbers.
 - **Two vendored FishyFacepunch patches with no update path** (§1). Fork and pin, or
   accept them permanently — but decide before a third arrives.
 - **`WorldStreamer.LastInstances` double-counts**, once per submesh, so the number
