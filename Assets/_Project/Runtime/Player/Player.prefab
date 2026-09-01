@@ -387,6 +387,12 @@ MonoBehaviour:
   _maxPitch: 70
   _invertY: 0
   _captureCursor: 1
+  _obstruction:
+    serializedVersion: 2
+    m_Bits: 4294967291
+  _probeRadius: 0.2
+  _minDistance: 0.6
+  _returnSpeed: 6
 --- !u!114 &761554422986088545
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -429,6 +435,10 @@ MonoBehaviour:
   Rejected:
     m_PersistentCalls:
       m_Calls: []
+  Missed:
+    m_PersistentCalls:
+      m_Calls: []
+  _stumbleSeconds: 0.9
 --- !u!114 &7132070791829196623
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -717,6 +727,10 @@ MonoBehaviour:
   _animator: {fileID: 59558893231185417}
   _speedParameter: Speed
   _chopTrigger: Chop
+  _stumbleTrigger: Stumble
+  _rateParameter: LocomotionRate
   _speedDamping: 0.12
+  _naturalRunSpeed: 5.5
+  _maxRate: 1.35
   _faceMovement: 1
   _turnDegreesPerSecond: 720
